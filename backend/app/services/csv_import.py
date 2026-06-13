@@ -13,6 +13,8 @@ from app.models.enums import FindingStatus, LikelihoodImpact, RiskRating, BauOrP
 TEST_FIELDS = [
     "name",
     "tester_reference",
+    "penetration_tester",
+    "unique_test_reference",
     "scope",
     "bau_or_project",
     "itsm_reference",

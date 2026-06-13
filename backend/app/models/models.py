@@ -55,6 +55,8 @@ class Test(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(300), nullable=False)
     tester_reference: Mapped[str | None] = mapped_column(String(300))
+    penetration_tester: Mapped[str | None] = mapped_column(String(300))
+    unique_test_reference: Mapped[str | None] = mapped_column(String(200))
     scope: Mapped[str | None] = mapped_column(Text)
     bau_or_project: Mapped[BauOrProject | None] = mapped_column(SAEnum(BauOrProject))
     itsm_reference: Mapped[str | None] = mapped_column(String(200))

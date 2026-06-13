@@ -43,7 +43,9 @@ export default function Tests({ teams, users }) {
             <div className="meta">
               <span className="badge">{t.bau_or_project || "—"}</span>
               <span className="badge">{t.status}</span>
-              {t.tester_reference && <span>· {t.tester_reference}</span>}
+              {t.penetration_tester && <span> · {t.penetration_tester}</span>}
+              {t.unique_test_reference && <span className="badge">{t.unique_test_reference}</span>}
+              {t.tester_reference && <span> · {t.tester_reference}</span>}
               {t.date_logged && <span> · logged {t.date_logged}</span>}
             </div>
           </div>

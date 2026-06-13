@@ -13,6 +13,63 @@ import {
 
 const SLA_OPTS = ["In", "Out"];
 
+// Build a full-detail CSV from the currently filtered rows and trigger download.
+function exportCsv(rows, testById, teamName, userName) {
+  const cols = [
+    ["Test", (f) => testById[f.test_id]?.name],
+    ["Penetration Tester", (f) => testById[f.test_id]?.penetration_tester],
+    ["Unique Test Reference", (f) => testById[f.test_id]?.unique_test_reference],
+    ["BAU/Project", (f) => testById[f.test_id]?.bau_or_project],
+    ["Scope", (f) => testById[f.test_id]?.scope],
+    ["Asset Tested", (f) => f.asset_tested],
+    ["User Story", (f) => f.user_story],
+    ["Vulnerability", (f) => f.vulnerability],
+    ["Finding Description", (f) => f.finding_description],
+    ["Vendor Recommendation", (f) => f.test_vendor_initial_recommendation],
+    ["Gross Risk Rating", (f) => f.gross_risk_rating],
+    ["Net Likelihood", (f) => f.net_likelihood],
+    ["Net Impact", (f) => f.net_impact],
+    ["Net Rating", (f) => f.net_rating],
+    ["Net Risk Rationale", (f) => f.net_risk_rationale],
+    [
+      "Remediation Owner",
+      (f) =>
+        f.remediation_owner_user_id
+          ? userName[f.remediation_owner_user_id]
+          : f.remediation_owner_team_id
+          ? teamName[f.remediation_owner_team_id]
+          : "",
+    ],
+    ["Status", (f) => f.status],
+    ["Due Date", (f) => f.due_date],
+    ["SLA", (f) => f.sla_status],
+    ["ITSM Reference", (f) => f.itsm_reference],
+    ["Additional Information", (f) => f.additional_information],
+    ["Resolver Reference", (f) => f.resolver_reference],
+    ["Date Logged in Resolver", (f) => f.date_logged_in_resolver],
+  ];
+
+  const esc = (v) => {
+    const s = v == null ? "" : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  const header = cols.map((c) => esc(c[0])).join(",");
+  const lines = rows.map((f) => cols.map((c) => esc(c[1](f))).join(","));
+  const csv = [header, ...lines].join("\r\n");
+
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const stamp = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `findings-export-${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function Findings({ teams, users }) {
   const [findings, setFindings] = useState([]);
   const [tests, setTests] = useState([]);
@@ -45,6 +102,11 @@ export default function Findings({ teams, users }) {
     load();
   }, []);
 
+  const testById = useMemo(() => {
+    const m = {};
+    tests.forEach((t) => (m[t.id] = t));
+    return m;
+  }, [tests]);
   const testName = useMemo(() => {
     const m = {};
     tests.forEach((t) => (m[t.id] = t.name));
@@ -81,17 +143,22 @@ export default function Findings({ teams, users }) {
       if (fTeam.size && !fTeam.has(f.remediation_owner_team_id)) return false;
       if (search) {
         const s = search.toLowerCase();
-        const hay = `${f.vulnerability || ""} ${f.asset_tested || ""} ${f.finding_description || ""}`.toLowerCase();
+        const t = testById[f.test_id] || {};
+        const hay = `${f.vulnerability || ""} ${f.asset_tested || ""} ${f.finding_description || ""} ${t.penetration_tester || ""} ${t.unique_test_reference || ""}`.toLowerCase();
         if (!hay.includes(s)) return false;
       }
       return true;
     });
     const { key, dir } = sort;
+    const TEST_KEYS = new Set(["penetration_tester", "unique_test_reference"]);
     r = [...r].sort((a, b) => {
       let av, bv;
       if (key === "owner") {
         av = ownerLabel(a) || "";
         bv = ownerLabel(b) || "";
+      } else if (TEST_KEYS.has(key)) {
+        av = testById[a.test_id]?.[key] ?? "";
+        bv = testById[b.test_id]?.[key] ?? "";
       } else {
         av = a[key] ?? "";
         bv = b[key] ?? "";
@@ -99,7 +166,7 @@ export default function Findings({ teams, users }) {
       return String(av).localeCompare(String(bv)) * dir;
     });
     return r;
-  }, [findings, fRating, fStatus, fSla, fTeam, search, sort]);
+  }, [findings, fRating, fStatus, fSla, fTeam, search, sort, testById]);
 
   const outCount = rows.filter((f) => f.sla_status === "Out").length;
 
@@ -177,6 +244,9 @@ export default function Findings({ teams, users }) {
               {rows.length} findings · {outCount} out of SLA
             </span>
             <div className="spacer" />
+            <button className="btn ghost" onClick={() => exportCsv(rows, testById, teamName, userName)}>
+              Export CSV
+            </button>
             <button className="btn ghost" onClick={() => setShowImport(true)}>
               Import CSV
             </button>
@@ -198,6 +268,12 @@ export default function Findings({ teams, users }) {
                   </th>
                   <th onClick={() => setSortKey("asset_tested")}>
                     Asset <span className="ar">{arrow("asset_tested")}</span>
+                  </th>
+                  <th onClick={() => setSortKey("penetration_tester")}>
+                    Tester <span className="ar">{arrow("penetration_tester")}</span>
+                  </th>
+                  <th onClick={() => setSortKey("unique_test_reference")}>
+                    Test Ref <span className="ar">{arrow("unique_test_reference")}</span>
                   </th>
                   <th>Gross → Net</th>
                   <th onClick={() => setSortKey("status")}>
@@ -228,6 +304,8 @@ export default function Findings({ teams, users }) {
                       </td>
                       <td className="vuln">{f.vulnerability || <span className="muted">Untitled</span>}</td>
                       <td className="muted">{f.asset_tested || "—"}</td>
+                      <td className="muted">{testById[f.test_id]?.penetration_tester || "—"}</td>
+                      <td className="muted">{testById[f.test_id]?.unique_test_reference || "—"}</td>
                       <td>
                         <span className="delta">
                           <span className={ratingClass(f.gross_risk_rating)}>
@@ -263,6 +341,7 @@ export default function Findings({ teams, users }) {
             teams={teams}
             users={users}
             testName={testName[selected.test_id]}
+            test={testById[selected.test_id]}
             onClose={() => setSelected(null)}
             onSaved={(updated) => {
               setFindings((list) => list.map((x) => (x.id === updated.id ? updated : x)));
@@ -285,7 +364,7 @@ export default function Findings({ teams, users }) {
   );
 }
 
-function FindingDrawer({ finding, teams, users, testName, onClose, onSaved }) {
+function FindingDrawer({ finding, teams, users, testName, test, onClose, onSaved }) {
   const [form, setForm] = useState({ ...finding });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -460,6 +539,18 @@ function FindingDrawer({ finding, teams, users, testName, onClose, onSaved }) {
           <div className="field">
             <label>Test vendor recommendation</label>
             <div className="val muted">{form.test_vendor_initial_recommendation}</div>
+          </div>
+        )}
+        {(test?.penetration_tester || test?.unique_test_reference) && (
+          <div className="row2">
+            <div className="field">
+              <label>Penetration tester</label>
+              <div className="val muted">{test?.penetration_tester || "—"}</div>
+            </div>
+            <div className="field">
+              <label>Unique test reference</label>
+              <div className="val muted">{test?.unique_test_reference || "—"}</div>
+            </div>
           </div>
         )}
         <div className="row2">

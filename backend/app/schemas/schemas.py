@@ -60,6 +60,8 @@ class UserOut(BaseModel):
 class TestCreate(BaseModel):
     name: str
     tester_reference: str | None = None
+    penetration_tester: str | None = None
+    unique_test_reference: str | None = None
     scope: str | None = None
     bau_or_project: BauOrProject | None = None
     itsm_reference: str | None = None
@@ -72,6 +74,8 @@ class TestCreate(BaseModel):
 class TestUpdate(BaseModel):
     name: str | None = None
     tester_reference: str | None = None
+    penetration_tester: str | None = None
+    unique_test_reference: str | None = None
     scope: str | None = None
     bau_or_project: BauOrProject | None = None
     itsm_reference: str | None = None
@@ -86,6 +90,8 @@ class TestOut(BaseModel):
     id: int
     name: str
     tester_reference: str | None
+    penetration_tester: str | None
+    unique_test_reference: str | None
     scope: str | None
     bau_or_project: BauOrProject | None
     itsm_reference: str | None
