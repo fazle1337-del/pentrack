@@ -124,3 +124,23 @@ textarea{resize:vertical;min-height:60px}
 .tl-marker{position:absolute;top:3px;height:18px;border-radius:4px;background:var(--accent);min-width:6px}
 .tl-months{display:flex;margin-left:210px;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.05em}
 .tl-months span{flex:1;text-align:left}
+
+/* import modal */
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:50}
+.modal{width:640px;max-width:92vw;max-height:88vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--line)}
+.modal-head h2{margin:0;font-size:16px}
+.modal-body{padding:18px}
+.modal-body p{margin:0 0 12px;font-size:13px;line-height:1.5}
+.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+.maptable{border:1px solid var(--line);border-radius:9px;overflow:hidden;margin-top:8px}
+.maprow{display:flex;align-items:center;gap:12px;padding:9px 12px;border-bottom:1px solid #1a1e29}
+.maprow:last-child{border-bottom:none}
+.mapcol-name{flex:1;min-width:0;font-size:13px;overflow:hidden}
+.mapsample{color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.mapcol-arrow{color:var(--muted)}
+.maprow select{width:230px;flex-shrink:0}
+.warnline{color:var(--warn);font-size:12px;background:rgba(255,184,76,.08);border:1px solid rgba(255,184,76,.25);border-radius:7px;padding:8px 10px}
+.issuelist{border:1px solid var(--line);border-radius:9px;max-height:240px;overflow:auto}
+.issue{padding:8px 12px;border-bottom:1px solid #1a1e29;font-size:12px}
+.issue:last-child{border-bottom:none}

@@ -77,6 +77,20 @@ export const api = {
     fd.append("file", file);
     return request(`/findings/${id}/attachments`, { method: "POST", form: fd });
   },
+  // Imports
+  importFields: () => request("/imports/fields"),
+  importPreview: (file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request("/imports/preview", { method: "POST", form: fd });
+  },
+  importCommit: (file, mapping, mode) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("mapping", JSON.stringify(mapping));
+    fd.append("mode", mode);
+    return request("/imports/commit", { method: "POST", form: fd });
+  },
   async downloadFindingAttachment(attId, filename) {
     const blob = await request(`/finding-attachments/${attId}/download`, {
       isFile: true,

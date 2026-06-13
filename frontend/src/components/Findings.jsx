@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api.js";
+import ImportModal from "./ImportModal.jsx";
 import {
   NET_RATINGS,
   FINDING_STATUSES,
@@ -18,6 +19,7 @@ export default function Findings({ teams, users }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState(null);
+  const [showImport, setShowImport] = useState(false);
 
   const [search, setSearch] = useState("");
   const [fRating, setFRating] = useState(new Set());
@@ -175,6 +177,9 @@ export default function Findings({ teams, users }) {
               {rows.length} findings · {outCount} out of SLA
             </span>
             <div className="spacer" />
+            <button className="btn ghost" onClick={() => setShowImport(true)}>
+              Import CSV
+            </button>
           </div>
 
           {loading ? (
@@ -266,6 +271,16 @@ export default function Findings({ teams, users }) {
           />
         )}
       </div>
+
+      {showImport && (
+        <ImportModal
+          onClose={() => setShowImport(false)}
+          onDone={() => {
+            setShowImport(false);
+            load();
+          }}
+        />
+      )}
     </div>
   );
 }

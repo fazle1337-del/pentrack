@@ -8,7 +8,7 @@ from app.core.database import Base, SessionLocal, engine
 from app.core.security import hash_password
 from app.models.enums import AuthType, Role
 from app.models.models import User
-from app.routers import attachments, auth, findings, teams_users, tests
+from app.routers import attachments, auth, findings, imports, teams_users, tests
 
 settings = get_settings()
 
@@ -53,6 +53,7 @@ app.include_router(teams_users.router)
 app.include_router(tests.router)
 app.include_router(findings.router)
 app.include_router(attachments.router)
+app.include_router(imports.router)
 
 
 @app.get("/health")

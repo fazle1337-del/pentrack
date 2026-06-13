@@ -1,0 +1,4 @@
+Test Name,Scope,BAU/Project,Tester,Asset,Vulnerability,Description,Gross,Net Likelihood,Net Impact,Net,Status,Due
+Q3 External Pentest,External web apps,Project,Acme Security / REF-2025-014,auth.acme.com,SQL Injection,Login bypass via UNION injection,High,High,Critical,Critical,Open,2025-08-01
+Q3 External Pentest,External web apps,Project,Acme Security / REF-2025-014,api.acme.com,Missing TLS,Plaintext internal API traffic,High,Medium,High,High,In Progress,2025-08-15
+Q3 External Pentest,External web apps,Project,Acme Security / REF-2025-014,portal.acme.com,Weak Cipher Suites,Outdated TLS configuration,Medium,Medium,Medium,Medium,Open,2025-09-01
