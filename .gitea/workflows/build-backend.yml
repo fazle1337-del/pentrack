@@ -1,0 +1,57 @@
+# Builds the PenTrack backend image and pushes it to your Gitea container
+# registry on every tag push (e.g. `git tag v0.1.0 && git push --tags`).
+#
+# Setup before first run:
+#   1. Settings -> Actions -> enable Actions for this repo, and have a runner
+#      registered that can build images (host-docker or dind).
+#   2. Create a repo/org secret REGISTRY_TOKEN: a Gitea personal access token
+#      (or package-scoped token) with package read/write.
+#   3. Edit REGISTRY and IMAGE below to match your Gitea host and owner.
+#
+# The image is built for linux/arm64 (Pi5) and linux/amd64 (Azure) so the same
+# tag works in both places.
+name: build-and-push-backend
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  REGISTRY: git.example.com          # <-- your Gitea host
+  IMAGE: tony/pen-test-tracker-backend  # <-- owner/image
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: catthehacker/ubuntu:act-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Gitea registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ gitea.repository_owner }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
+
+      - name: Derive version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Build and push (multi-arch)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ env.VERSION }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE }}:latest
