@@ -399,6 +399,10 @@ function FindingDrawer({ finding, teams, users, testName, test, onClose, onSaved
       net_rating: form.net_rating,
       net_likelihood: form.net_likelihood,
       net_impact: form.net_impact,
+      asset_tested: form.asset_tested,
+      test_vendor_initial_recommendation: form.test_vendor_initial_recommendation,
+      additional_information: form.additional_information,
+      date_logged_in_resolver: form.date_logged_in_resolver || null,
       itsm_reference: form.itsm_reference,
       resolver_reference: form.resolver_reference,
     };
@@ -452,6 +456,10 @@ function FindingDrawer({ finding, teams, users, testName, test, onClose, onSaved
         <div className="field">
           <label>Vulnerability</label>
           <input className="in" value={form.vulnerability || ""} onChange={(e) => set("vulnerability", e.target.value)} />
+        </div>
+        <div className="field">
+          <label>Asset tested</label>
+          <input className="in" value={form.asset_tested || ""} onChange={(e) => set("asset_tested", e.target.value)} />
         </div>
         <div className="field">
           <label>Status</label>
@@ -535,12 +543,13 @@ function FindingDrawer({ finding, teams, users, testName, test, onClose, onSaved
           <label>Net risk rationale</label>
           <textarea value={form.net_risk_rationale || ""} onChange={(e) => set("net_risk_rationale", e.target.value)} />
         </div>
-        {form.test_vendor_initial_recommendation && (
-          <div className="field">
-            <label>Test vendor recommendation</label>
-            <div className="val muted">{form.test_vendor_initial_recommendation}</div>
-          </div>
-        )}
+        <div className="field">
+          <label>Test vendor recommendation</label>
+          <textarea
+            value={form.test_vendor_initial_recommendation || ""}
+            onChange={(e) => set("test_vendor_initial_recommendation", e.target.value)}
+          />
+        </div>
         {(test?.penetration_tester || test?.unique_test_reference) && (
           <div className="row2">
             <div className="field">
@@ -562,6 +571,22 @@ function FindingDrawer({ finding, teams, users, testName, test, onClose, onSaved
             <label>Resolver reference</label>
             <input className="in" value={form.resolver_reference || ""} onChange={(e) => set("resolver_reference", e.target.value)} />
           </div>
+        </div>
+        <div className="field">
+          <label>Date logged in resolver</label>
+          <input
+            className="in"
+            type="date"
+            value={form.date_logged_in_resolver || ""}
+            onChange={(e) => set("date_logged_in_resolver", e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label>Additional information</label>
+          <textarea
+            value={form.additional_information || ""}
+            onChange={(e) => set("additional_information", e.target.value)}
+          />
         </div>
         <div className="field">
           <label>Attachments</label>
