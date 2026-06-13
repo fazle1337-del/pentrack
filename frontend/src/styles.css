@@ -144,3 +144,7 @@ textarea{resize:vertical;min-height:60px}
 .issuelist{border:1px solid var(--line);border-radius:9px;max-height:240px;overflow:auto}
 .issue{padding:8px 12px;border-bottom:1px solid #1a1e29;font-size:12px}
 .issue:last-child{border-bottom:none}
+
+/* attachment remove button */
+.att-remove{margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;line-height:1;padding:0 4px;border-radius:4px}
+.att-remove:hover{color:var(--crit);background:rgba(255,92,108,.1)}

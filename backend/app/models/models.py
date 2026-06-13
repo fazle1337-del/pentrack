@@ -92,6 +92,7 @@ class Finding(Base):
 
     status: Mapped[FindingStatus] = mapped_column(SAEnum(FindingStatus), default=FindingStatus.open)
     due_date: Mapped[date | None] = mapped_column(Date)
+    itsm_reference: Mapped[str | None] = mapped_column(String(200))
     additional_information: Mapped[str | None] = mapped_column(Text)
     resolver_reference: Mapped[str | None] = mapped_column(String(200))
     date_logged_in_resolver: Mapped[date | None] = mapped_column(Date)

@@ -132,3 +132,37 @@ def download_finding_attachment(
     if not path.exists():
         raise HTTPException(status_code=404, detail="File missing from storage")
     return FileResponse(path, filename=att.filename)
+
+
+@router.delete("/finding-attachments/{attachment_id}", status_code=204)
+def delete_finding_attachment(
+    attachment_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    att = db.get(FindingAttachment, attachment_id)
+    if not att:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    finding = db.get(Finding, att.finding_id)
+    if not _can_access(user, finding):
+        raise HTTPException(status_code=403, detail="Not authorised for this finding")
+    # remove the stored file, then the DB row
+    storage.delete(att.storage_path)
+    db.delete(att)
+    db.commit()
+
+
+@router.delete("/test-attachments/{attachment_id}", status_code=204)
+def delete_test_attachment(
+    attachment_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role != Role.admin:
+        raise HTTPException(status_code=403, detail="Admin privileges required")
+    att = db.get(TestAttachment, attachment_id)
+    if not att:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    storage.delete(att.storage_path)
+    db.delete(att)
+    db.commit()

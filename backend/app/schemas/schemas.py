@@ -114,6 +114,7 @@ class FindingCreate(BaseModel):
     remediation_owner_team_id: int | None = None
     status: FindingStatus = FindingStatus.open
     due_date: date | None = None
+    itsm_reference: str | None = None
     additional_information: str | None = None
     resolver_reference: str | None = None
     date_logged_in_resolver: date | None = None
@@ -134,6 +135,7 @@ class FindingUpdate(BaseModel):
     remediation_owner_team_id: int | None = None
     status: FindingStatus | None = None
     due_date: date | None = None
+    itsm_reference: str | None = None
     additional_information: str | None = None
     resolver_reference: str | None = None
     date_logged_in_resolver: date | None = None
@@ -157,6 +159,7 @@ class FindingOut(BaseModel):
     remediation_owner_team_id: int | None
     status: FindingStatus
     due_date: date | None
+    itsm_reference: str | None
     additional_information: str | None
     resolver_reference: str | None
     date_logged_in_resolver: date | None

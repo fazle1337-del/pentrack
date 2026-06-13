@@ -486,6 +486,20 @@ function FindingDrawer({ finding, teams, users, testName, onClose, onSaved }) {
               >
                 {a.filename}
               </a>
+              <button
+                className="att-remove"
+                title="Remove attachment"
+                onClick={async () => {
+                  try {
+                    await api.deleteFindingAttachment(a.id);
+                    setAtts(await api.listFindingAttachments(finding.id));
+                  } catch (e2) {
+                    setErr(e2.message);
+                  }
+                }}
+              >
+                ×
+              </button>
             </div>
           ))}
           <label className="btn ghost" style={{ width: "100%", marginTop: 4, display: "block", textAlign: "center" }}>

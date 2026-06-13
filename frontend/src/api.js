@@ -77,6 +77,8 @@ export const api = {
     fd.append("file", file);
     return request(`/findings/${id}/attachments`, { method: "POST", form: fd });
   },
+  deleteFindingAttachment: (attId) =>
+    request(`/finding-attachments/${attId}`, { method: "DELETE" }),
   // Imports
   importFields: () => request("/imports/fields"),
   importPreview: (file) => {

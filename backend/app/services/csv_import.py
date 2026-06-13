@@ -33,6 +33,7 @@ FINDING_FIELDS = [
     "net_risk_rationale",
     "status",
     "due_date",
+    "itsm_reference",
     "additional_information",
     "resolver_reference",
     "date_logged_in_resolver",

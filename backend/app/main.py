@@ -30,10 +30,34 @@ def seed_admin():
         db.close()
 
 
+from sqlalchemy import inspect, text
+
+
+def sync_missing_columns():
+    """Lightweight, non-destructive schema sync: for each mapped table, ADD any
+    columns present in the model but missing from the live DB. Covers simple
+    additive changes (like adding itsm_reference to findings) without a full
+    Alembic setup. Type/constraint changes still need a real migration."""
+    with engine.begin() as conn:
+        inspector = inspect(conn)
+        existing_tables = set(inspector.get_table_names())
+        for table in Base.metadata.sorted_tables:
+            if table.name not in existing_tables:
+                continue  # create_all handles brand-new tables
+            live_cols = {c["name"] for c in inspector.get_columns(table.name)}
+            for col in table.columns:
+                if col.name in live_cols:
+                    continue
+                col_type = col.type.compile(dialect=engine.dialect)
+                conn.execute(
+                    text(f'ALTER TABLE {table.name} ADD COLUMN {col.name} {col_type}')
+                )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Phase 1: create tables directly. Alembic migrations wired in Phase 2.
     Base.metadata.create_all(bind=engine)
+    sync_missing_columns()
     seed_admin()
     yield
 
