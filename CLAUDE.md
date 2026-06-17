@@ -27,15 +27,42 @@ RBAC enforces this split. Runs on a self-hosted Umbrel instance (Raspberry Pi 5)
 
 ## Deployment — read this before claiming anything is "deployed"
 
-Umbrel serves the **Docker Hub image** referenced in `docker-compose.yml`, not the repo's source files. Editing files or restarting the app in the Umbrel dashboard changes nothing on its own.
+Umbrel serves the **Docker Hub images** pinned in the app's compose (in the Umbrel app-data / app-store repo), not this repo's source. Editing files here, or restarting the app in the Umbrel dashboard, changes nothing on its own.
 
-Use `deploy.sh`, which bakes in the safeguards:
+Two images, built + pushed together under the **same semver tag** (e.g. `0.3.4`). **Bump the version on every change — never overwrite a published tag.**
 
-1. **Dev machine:** `./deploy.sh build` — buildx multi-arch build + push. It inspects the manifest digest after pushing and **warns if the digest didn't change** (the "new digest, not Layer already exists" check).
-2. **Pi:** `./deploy.sh recreate` — pulls the new image (`:latest` won't re-pull on its own) and force-recreates the containers.
-3. **Pi:** `./deploy.sh verify` — confirms each live container's image digest matches the current `:latest` manifest on Docker Hub.
+- `tonybooom/pen-test-tracker-backend`  — build context `./backend`
+- `tonybooom/pen-test-tracker-frontend` — build context `./frontend`
 
-Never call a change deployed until `verify` reports a match. Restarting the app in the Umbrel dashboard does **not** pull a new image and changes nothing on its own.
+**1. Build + push (dev machine).** Images are multi-arch (the Pi is arm64). Once per machine/reboot, register QEMU + a container-driver builder:
+
+```bash
+docker run --privileged --rm tonistiigi/binfmt --install arm64
+docker buildx create --name pentest-builder --driver docker-container --use   # only if missing
+```
+
+Then, bumping `X.Y.Z` each release:
+
+```bash
+docker buildx build --platform linux/amd64,linux/arm64 -t tonybooom/pen-test-tracker-backend:X.Y.Z  --push ./backend
+docker buildx build --platform linux/amd64,linux/arm64 -t tonybooom/pen-test-tracker-frontend:X.Y.Z --push ./frontend
+```
+
+**2. Release (Pi).** Bump both image tags to `X.Y.Z` in the Umbrel app compose, then pull + recreate (a `:latest`-style restart won't re-pull; changing the tag forces it):
+
+```bash
+sudo docker compose -f ~/umbrel/app-data/tony-pen-test-tracker/docker-compose.yml pull
+sudo docker compose -f ~/umbrel/app-data/tony-pen-test-tracker/docker-compose.yml up -d --force-recreate
+```
+
+Hard-refresh the browser afterwards — the frontend is nginx static + a service worker, so old assets cache.
+
+**3. Verify.** A dashboard restart does **not** pull. Before calling it deployed, confirm the live container runs the new tag and its digest matches what you pushed:
+
+```bash
+sudo docker inspect tony-pen-test-tracker_api_1 --format '{{.Config.Image}}'    # expect :X.Y.Z
+docker buildx imagetools inspect tonybooom/pen-test-tracker-frontend:X.Y.Z | grep -i digest
+```
 
 ## Umbrel-specific constraints
 
