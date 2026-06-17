@@ -347,6 +347,9 @@ export default function Findings({ teams, users }) {
               setFindings((list) => list.map((x) => (x.id === updated.id ? updated : x)));
               setSelected(updated);
             }}
+            onTestSaved={(updatedTest) => {
+              setTests((list) => list.map((x) => (x.id === updatedTest.id ? updatedTest : x)));
+            }}
           />
         )}
       </div>
@@ -364,8 +367,12 @@ export default function Findings({ teams, users }) {
   );
 }
 
-function FindingDrawer({ finding, teams, users, testName, test, onClose, onSaved }) {
+function FindingDrawer({ finding, teams, users, testName, test, onClose, onSaved, onTestSaved }) {
   const [form, setForm] = useState({ ...finding });
+  const [testForm, setTestForm] = useState({
+    penetration_tester: test?.penetration_tester || "",
+    unique_test_reference: test?.unique_test_reference || "",
+  });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [atts, setAtts] = useState([]);
@@ -383,6 +390,10 @@ function FindingDrawer({ finding, teams, users, testName, test, onClose, onSaved
 
   function set(k, v) {
     setForm((f) => ({ ...f, [k]: v }));
+  }
+
+  function setT(k, v) {
+    setTestForm((f) => ({ ...f, [k]: v }));
   }
 
   async function save() {
@@ -418,6 +429,17 @@ function FindingDrawer({ finding, teams, users, testName, test, onClose, onSaved
     }
     try {
       const updated = await api.updateFinding(finding.id, body);
+      if (
+        test &&
+        (testForm.penetration_tester !== (test.penetration_tester || "") ||
+          testForm.unique_test_reference !== (test.unique_test_reference || ""))
+      ) {
+        const updatedTest = await api.updateTest(test.id, {
+          penetration_tester: testForm.penetration_tester || null,
+          unique_test_reference: testForm.unique_test_reference || null,
+        });
+        onTestSaved?.(updatedTest);
+      }
       onSaved(updated);
     } catch (e) {
       setErr(e.message);
@@ -550,17 +572,30 @@ function FindingDrawer({ finding, teams, users, testName, test, onClose, onSaved
             onChange={(e) => set("test_vendor_initial_recommendation", e.target.value)}
           />
         </div>
-        {(test?.penetration_tester || test?.unique_test_reference) && (
-          <div className="row2">
-            <div className="field">
-              <label>Penetration tester</label>
-              <div className="val muted">{test?.penetration_tester || "—"}</div>
+        {test && (
+          <>
+            <div className="row2">
+              <div className="field">
+                <label>Penetration tester</label>
+                <input
+                  className="in"
+                  value={testForm.penetration_tester}
+                  onChange={(e) => setT("penetration_tester", e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label>Unique test reference</label>
+                <input
+                  className="in"
+                  value={testForm.unique_test_reference}
+                  onChange={(e) => setT("unique_test_reference", e.target.value)}
+                />
+              </div>
             </div>
-            <div className="field">
-              <label>Unique test reference</label>
-              <div className="val muted">{test?.unique_test_reference || "—"}</div>
-            </div>
-          </div>
+            <p className="muted" style={{ fontSize: 11, marginTop: -4 }}>
+              These belong to the test “{testName}” — changes apply to all its findings.
+            </p>
+          </>
         )}
         <div className="row2">
           <div className="field">
