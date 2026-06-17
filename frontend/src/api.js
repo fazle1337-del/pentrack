@@ -67,6 +67,37 @@ export const api = {
     request(`/findings${testId ? `?test_id=${testId}` : ""}`),
   updateFinding: (id, body) => request(`/findings/${id}`, { method: "PATCH", body }),
   createFinding: (body) => request("/findings", { method: "POST", body }),
+  // Bookings (BAU schedule)
+  listBookings: () => request("/bookings"),
+  createBooking: (body) => request("/bookings", { method: "POST", body }),
+  updateBooking: (id, body) => request(`/bookings/${id}`, { method: "PATCH", body }),
+  deleteBooking: (id) => request(`/bookings/${id}`, { method: "DELETE" }),
+  reorderBookings: (orderedIds) =>
+    request("/bookings/reorder", { method: "POST", body: { ordered_ids: orderedIds } }),
+  // Scopes
+  listScopes: () => request("/scopes"),
+  createScope: (body) => request("/scopes", { method: "POST", body }),
+  updateScope: (id, body) => request(`/scopes/${id}`, { method: "PATCH", body }),
+  deleteScope: (id) => request(`/scopes/${id}`, { method: "DELETE" }),
+  listScopeAttachments: (id) => request(`/scopes/${id}/attachments`),
+  uploadScopeAttachment: (id, file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request(`/scopes/${id}/attachments`, { method: "POST", form: fd });
+  },
+  deleteScopeAttachment: (attId) =>
+    request(`/scope-attachments/${attId}`, { method: "DELETE" }),
+  async downloadScopeAttachment(attId, filename) {
+    const blob = await request(`/scope-attachments/${attId}/download`, { isFile: true });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename || "attachment";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
   // Teams / users
   listTeams: () => request("/teams"),
   listUsers: () => request("/users"),

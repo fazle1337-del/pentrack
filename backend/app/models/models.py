@@ -17,11 +17,11 @@ from app.core.database import Base
 from app.models.enums import (
     AuthType,
     BauOrProject,
+    EngagementStatus,
     FindingStatus,
     LikelihoodImpact,
     RiskRating,
     Role,
-    TestStatus,
 )
 
 
@@ -56,15 +56,17 @@ class Test(Base):
     name: Mapped[str] = mapped_column(String(300), nullable=False)
     tester_reference: Mapped[str | None] = mapped_column(String(300))
     penetration_tester: Mapped[str | None] = mapped_column(String(300))
-    unique_test_reference: Mapped[str | None] = mapped_column(String(200))
-    scope: Mapped[str | None] = mapped_column(Text)
+    unique_test_reference: Mapped[str | None] = mapped_column(String(200), index=True)
     bau_or_project: Mapped[BauOrProject | None] = mapped_column(SAEnum(BauOrProject))
     itsm_reference: Mapped[str | None] = mapped_column(String(200))
     date_logged: Mapped[date | None] = mapped_column(Date)
     logged_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     due_date: Mapped[date | None] = mapped_column(Date)
     scheduled_date: Mapped[date | None] = mapped_column(Date)
-    status: Mapped[TestStatus] = mapped_column(SAEnum(TestStatus), default=TestStatus.planned)
+    status: Mapped[EngagementStatus] = mapped_column(
+        SAEnum(EngagementStatus), default=EngagementStatus.scheduled
+    )
+    status_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     findings: Mapped[list["Finding"]] = relationship(back_populates="test", cascade="all, delete-orphan")
@@ -146,3 +148,52 @@ class FindingReassignment(Base):
     changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     finding: Mapped["Finding"] = relationship(back_populates="reassignments")
+
+
+class Booking(Base):
+    """A scheduled slot on the BAU timeline. Linked to a Test (and everything
+    else) only by the shared ``unique_test_reference`` string — no hard FK, so
+    a booking can exist before its test does."""
+
+    __tablename__ = "bookings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    unique_test_reference: Mapped[str | None] = mapped_column(String(200), index=True)
+    start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    end_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[EngagementStatus] = mapped_column(
+        SAEnum(EngagementStatus), default=EngagementStatus.scheduled
+    )
+    status_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Scope(Base):
+    """A scoping document for an engagement: a title plus attached files.
+    Linked by the shared ``unique_test_reference`` string."""
+
+    __tablename__ = "scopes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    unique_test_reference: Mapped[str | None] = mapped_column(String(200), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    attachments: Mapped[list["ScopeAttachment"]] = relationship(
+        back_populates="scope", cascade="all, delete-orphan"
+    )
+
+
+class ScopeAttachment(Base):
+    __tablename__ = "scope_attachments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    scope_id: Mapped[int] = mapped_column(ForeignKey("scopes.id"), nullable=False)
+    filename: Mapped[str] = mapped_column(String(500), nullable=False)
+    storage_path: Mapped[str] = mapped_column(String(1000), nullable=False)
+    uploaded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    scope: Mapped["Scope"] = relationship(back_populates="attachments")

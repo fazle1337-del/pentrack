@@ -10,7 +10,20 @@ export const FINDING_STATUSES = [
   "Accepted",
   "Duplicate",
 ];
-export const TEST_STATUSES = ["Planned", "In Progress", "Completed"];
+// Shared engagement lifecycle used by tests and schedule bookings.
+export const ENGAGEMENT_STATUSES = ["Scheduled", "Booked", "Complete", "Cancelled"];
+
+// engagement status -> css class for the coloured bar/dot
+export function engagementClass(s) {
+  return (
+    {
+      Scheduled: "st-scheduled",
+      Booked: "st-booked",
+      Complete: "st-complete",
+      Cancelled: "st-cancelled",
+    }[s] || "st-scheduled"
+  );
+}
 
 // rating -> css class for color
 export function ratingClass(r) {

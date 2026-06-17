@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
-import { ratingBg, statusDot, TEST_STATUSES } from "../constants.js";
+import { ratingBg, statusDot, ENGAGEMENT_STATUSES } from "../constants.js";
 
 const BAU_OPTS = ["BAU", "Project"];
 
@@ -83,7 +83,6 @@ function TestDrawer({ test, onClose, onSaved }) {
         penetration_tester: form.penetration_tester,
         unique_test_reference: form.unique_test_reference,
         tester_reference: form.tester_reference,
-        scope: form.scope,
         bau_or_project: form.bau_or_project || null,
         itsm_reference: form.itsm_reference,
         status: form.status,
@@ -136,15 +135,11 @@ function TestDrawer({ test, onClose, onSaved }) {
           <div className="field">
             <label>Status</label>
             <select value={form.status} onChange={(e) => set("status", e.target.value)}>
-              {TEST_STATUSES.map((s) => (
+              {ENGAGEMENT_STATUSES.map((s) => (
                 <option key={s}>{s}</option>
               ))}
             </select>
           </div>
-        </div>
-        <div className="field">
-          <label>Scope</label>
-          <textarea value={form.scope || ""} onChange={(e) => set("scope", e.target.value)} />
         </div>
         <div className="row2">
           <div className="field">

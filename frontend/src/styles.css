@@ -116,14 +116,39 @@ textarea{resize:vertical;min-height:60px}
 .cardrow .meta{color:var(--muted);font-size:12px}
 .badge{display:inline-block;font-size:11px;padding:2px 7px;border-radius:5px;background:var(--panel2);border:1px solid var(--line);color:var(--muted);margin-right:6px}
 
-/* BAU timeline */
-.timeline{padding:18px;overflow:auto}
-.tl-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-.tl-label{width:200px;flex-shrink:0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tl-track{flex:1;position:relative;height:26px;background:var(--panel);border:1px solid var(--line);border-radius:6px}
-.tl-marker{position:absolute;top:3px;height:18px;border-radius:4px;background:var(--accent);min-width:6px}
-.tl-months{display:flex;margin-left:210px;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.05em}
-.tl-months span{flex:1;text-align:left}
+/* BAU schedule (weekly timeline) + scopes share this shell */
+.sched{display:flex;flex-direction:column;height:calc(100% - 54px)}
+.sched-toolbar{display:flex;align-items:center;gap:14px;padding:12px 18px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.sched-toolbar label{color:var(--muted);font-size:12px;margin-right:6px}
+.sched-toolbar input.in[type=date]{width:auto;display:inline-block;padding:6px 8px}
+.sched-main{flex:1;display:flex;min-width:0;min-height:0;position:relative}
+.sched-scroll{flex:1;overflow:auto;min-width:0}
+.sched-grid{display:flex;flex-direction:column;min-width:100%}
+.sched-head{display:flex;position:sticky;top:0;z-index:3}
+.sched-row{display:flex;align-items:stretch;border-bottom:1px solid #1a1e29}
+.sched-row:hover{background:#161a24}
+.sched-gutter{position:sticky;left:0;z-index:2;flex:0 0 210px;width:210px;background:var(--panel);
+  border-right:1px solid var(--line);display:flex;align-items:center;gap:8px;padding:0 10px;min-height:36px}
+.sched-head .sched-gutter{background:var(--ink);height:32px;min-height:32px}
+.sched-track{position:relative;flex:0 0 auto;min-height:36px;
+  background-image:repeating-linear-gradient(90deg,transparent 0,transparent 25px,#171b25 25px,#171b25 26px)}
+.sched-head .sched-track{height:32px;min-height:32px;background:var(--ink);background-image:none}
+.sched-months{display:flex;height:32px;align-items:center}
+.sched-month{flex:0 0 auto;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;
+  border-left:1px solid var(--line);padding-left:5px;line-height:32px;white-space:nowrap;overflow:hidden}
+.drag{cursor:grab;color:var(--muted);user-select:none;font-size:14px}
+.bk-title{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bk-bar{position:absolute;top:7px;height:22px;border-radius:5px;display:flex;align-items:center;
+  padding:0 7px;cursor:pointer;overflow:hidden;color:#07121d}
+.bk-bar-label{font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sched-legend{display:flex;gap:12px;align-items:center;font-size:11px;color:var(--muted)}
+.sched-legend .sw{width:10px;height:10px;border-radius:3px;display:inline-block;margin-right:4px;vertical-align:-1px}
+
+/* engagement status colours (scheduled/booked/complete/cancelled) */
+.st-scheduled{background:#7a8295}
+.st-booked{background:#4cc4ff}
+.st-complete{background:#39d98a}
+.st-cancelled{background:#ff5c6c}
 
 /* import modal */
 .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:50}

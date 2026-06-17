@@ -8,7 +8,16 @@ from app.core.database import Base, SessionLocal, engine
 from app.core.security import hash_password
 from app.models.enums import AuthType, Role
 from app.models.models import User
-from app.routers import attachments, auth, findings, imports, teams_users, tests
+from app.routers import (
+    attachments,
+    auth,
+    bookings,
+    findings,
+    imports,
+    scopes,
+    teams_users,
+    tests,
+)
 
 settings = get_settings()
 
@@ -54,9 +63,52 @@ def sync_missing_columns():
                 )
 
 
+def migrate_schedule_feature():
+    """One-time, idempotent migration for the BAU schedule feature. The app is
+    pre-production so test data is not preserved:
+      - swap tests.status from the old `teststatus` enum to `engagementstatus`
+        (the new type is created by create_all via the bookings table),
+      - drop the retired free-text tests.scope column,
+      - index tests.unique_test_reference (the shared link key).
+    """
+    from app.models.models import Test
+
+    status_type = Test.__table__.c.status.type
+    type_name = (status_type.name or "engagementstatus").lower()
+    default_label = list(status_type.enums)[0]
+    col_ddl = status_type.compile(dialect=engine.dialect)
+
+    with engine.begin() as conn:
+        if "tests" not in set(inspect(conn).get_table_names()):
+            return
+        udt = conn.execute(
+            text(
+                "SELECT udt_name FROM information_schema.columns "
+                "WHERE table_name='tests' AND column_name='status'"
+            )
+        ).scalar()
+        if udt is None or udt.lower() != type_name:
+            conn.execute(text("ALTER TABLE tests DROP COLUMN IF EXISTS status"))
+            conn.execute(
+                text(
+                    f"ALTER TABLE tests ADD COLUMN status {col_ddl} "
+                    f"NOT NULL DEFAULT '{default_label}'"
+                )
+            )
+            conn.execute(text("DROP TYPE IF EXISTS teststatus"))
+        conn.execute(text("ALTER TABLE tests DROP COLUMN IF EXISTS scope"))
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_tests_unique_test_reference "
+                "ON tests (unique_test_reference)"
+            )
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    migrate_schedule_feature()
     sync_missing_columns()
     seed_admin()
     yield
@@ -78,6 +130,8 @@ app.include_router(tests.router)
 app.include_router(findings.router)
 app.include_router(attachments.router)
 app.include_router(imports.router)
+app.include_router(bookings.router)
+app.include_router(scopes.router)
 
 
 @app.get("/health")

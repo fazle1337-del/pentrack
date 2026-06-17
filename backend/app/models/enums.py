@@ -16,10 +16,12 @@ class BauOrProject(str, enum.Enum):
     project = "Project"
 
 
-class TestStatus(str, enum.Enum):
-    planned = "Planned"
-    in_progress = "In Progress"
-    completed = "Completed"
+class EngagementStatus(str, enum.Enum):
+    """Shared lifecycle for a test and its schedule bookings."""
+    scheduled = "Scheduled"
+    booked = "Booked"
+    complete = "Complete"
+    cancelled = "Cancelled"
 
 
 class RiskRating(str, enum.Enum):

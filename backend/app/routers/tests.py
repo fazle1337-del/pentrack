@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -5,6 +7,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_user, require_admin
 from app.models.models import Test, User
 from app.schemas.schemas import TestCreate, TestOut, TestUpdate
+from app.services.status_sync import sync_from_test
 
 router = APIRouter(prefix="/tests", tags=["tests"])
 
@@ -47,8 +50,18 @@ def update_test(
     test = db.get(Test, test_id)
     if not test:
         raise HTTPException(status_code=404, detail="Test not found")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    status_changed = "status" in data and data["status"] != test.status
+    ref_changed = (
+        "unique_test_reference" in data
+        and data["unique_test_reference"] != test.unique_test_reference
+    )
+    for field, value in data.items():
         setattr(test, field, value)
+    if status_changed:
+        test.status_updated_at = datetime.now(timezone.utc)
+    if status_changed or ref_changed:
+        sync_from_test(db, test)
     db.commit()
     db.refresh(test)
     return test

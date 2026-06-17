@@ -5,11 +5,11 @@ from pydantic import BaseModel, ConfigDict, EmailStr
 from app.models.enums import (
     AuthType,
     BauOrProject,
+    EngagementStatus,
     FindingStatus,
     LikelihoodImpact,
     RiskRating,
     Role,
-    TestStatus,
 )
 
 
@@ -62,13 +62,12 @@ class TestCreate(BaseModel):
     tester_reference: str | None = None
     penetration_tester: str | None = None
     unique_test_reference: str | None = None
-    scope: str | None = None
     bau_or_project: BauOrProject | None = None
     itsm_reference: str | None = None
     date_logged: date | None = None
     due_date: date | None = None
     scheduled_date: date | None = None
-    status: TestStatus = TestStatus.planned
+    status: EngagementStatus = EngagementStatus.scheduled
 
 
 class TestUpdate(BaseModel):
@@ -76,13 +75,12 @@ class TestUpdate(BaseModel):
     tester_reference: str | None = None
     penetration_tester: str | None = None
     unique_test_reference: str | None = None
-    scope: str | None = None
     bau_or_project: BauOrProject | None = None
     itsm_reference: str | None = None
     date_logged: date | None = None
     due_date: date | None = None
     scheduled_date: date | None = None
-    status: TestStatus | None = None
+    status: EngagementStatus | None = None
 
 
 class TestOut(BaseModel):
@@ -92,14 +90,13 @@ class TestOut(BaseModel):
     tester_reference: str | None
     penetration_tester: str | None
     unique_test_reference: str | None
-    scope: str | None
     bau_or_project: BauOrProject | None
     itsm_reference: str | None
     date_logged: date | None
     logged_by_user_id: int | None
     due_date: date | None
     scheduled_date: date | None
-    status: TestStatus
+    status: EngagementStatus
     created_at: datetime
 
 
@@ -180,3 +177,57 @@ class AttachmentOut(BaseModel):
     filename: str
     uploaded_by: int | None
     uploaded_at: datetime
+
+
+# ---- Bookings (BAU schedule) ----
+class BookingCreate(BaseModel):
+    title: str
+    unique_test_reference: str | None = None
+    start_at: datetime
+    end_at: datetime
+    status: EngagementStatus = EngagementStatus.scheduled
+
+
+class BookingUpdate(BaseModel):
+    title: str | None = None
+    unique_test_reference: str | None = None
+    start_at: datetime | None = None
+    end_at: datetime | None = None
+    status: EngagementStatus | None = None
+
+
+class BookingOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    title: str
+    unique_test_reference: str | None
+    start_at: datetime
+    end_at: datetime
+    status: EngagementStatus
+    status_updated_at: datetime | None
+    sort_order: int
+    created_at: datetime
+
+
+class BookingReorder(BaseModel):
+    ordered_ids: list[int]
+
+
+# ---- Scopes ----
+class ScopeCreate(BaseModel):
+    title: str
+    unique_test_reference: str | None = None
+
+
+class ScopeUpdate(BaseModel):
+    title: str | None = None
+    unique_test_reference: str | None = None
+
+
+class ScopeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    title: str
+    unique_test_reference: str | None
+    created_at: datetime
+    attachments: list[AttachmentOut] = []

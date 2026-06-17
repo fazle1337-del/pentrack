@@ -20,7 +20,6 @@ function exportCsv(rows, testById, teamName, userName) {
     ["Penetration Tester", (f) => testById[f.test_id]?.penetration_tester],
     ["Unique Test Reference", (f) => testById[f.test_id]?.unique_test_reference],
     ["BAU/Project", (f) => testById[f.test_id]?.bau_or_project],
-    ["Scope", (f) => testById[f.test_id]?.scope],
     ["Asset Tested", (f) => f.asset_tested],
     ["User Story", (f) => f.user_story],
     ["Vulnerability", (f) => f.vulnerability],
