@@ -48,16 +48,16 @@ docker buildx build --platform linux/amd64,linux/arm64 -t tonybooom/pen-test-tra
 docker buildx build --platform linux/amd64,linux/arm64 -t tonybooom/pen-test-tracker-frontend:X.Y.Z --push ./frontend
 ```
 
-**2. Release (Pi).** Bump both image tags to `X.Y.Z` in the Umbrel app compose, then pull + recreate (a `:latest`-style restart won't re-pull; changing the tag forces it):
+**2. Bump the Umbrel app-store repo — DON'T SKIP THIS.** Pushing images to Docker Hub does nothing until the store entry points at the new tag. The store entry is a **separate repo**: `Tony-Umbrel` (`http://192.168.1.118:8085/fazle1337/Tony-Umbrel`, branch `master`), local clone at `~/Gitea/Umbrel`, folder `tony-pen-test-tracker/`. Edit **both** files, then commit + push:
 
-```bash
-sudo docker compose -f ~/umbrel/app-data/tony-pen-test-tracker/docker-compose.yml pull
-sudo docker compose -f ~/umbrel/app-data/tony-pen-test-tracker/docker-compose.yml up -d --force-recreate
-```
+- `tony-pen-test-tracker/docker-compose.yml` — bump both `image:` tags (`web`/frontend and `api`/backend) to `X.Y.Z`.
+- `tony-pen-test-tracker/umbrel-app.yml` — bump `version: "X.Y.Z"` (Umbrel keys "update available" off this) and refresh `releaseNotes`.
 
-Hard-refresh the browser afterwards — the frontend is nginx static + a service worker, so old assets cache.
+(That folder must contain ONLY those two files — never add source/scripts/Dockerfiles there.)
 
-**3. Verify.** A dashboard restart does **not** pull. Before calling it deployed, confirm the live container runs the new tag and its digest matches what you pushed:
+**3. Apply on Umbrel.** Update the app from the Umbrel dashboard (it reads the bumped store version), or on the Pi: `docker compose -f ~/umbrel/app-data/tony-pen-test-tracker/docker-compose.yml pull && ... up -d --force-recreate`. A dashboard *restart* won't pull; only an update/recreate does. Then hard-refresh the browser — the frontend is nginx static + a service worker, so old assets cache.
+
+**4. Verify.** Before calling it deployed, confirm the live container runs the new tag:
 
 ```bash
 sudo docker inspect tony-pen-test-tracker_api_1 --format '{{.Config.Image}}'    # expect :X.Y.Z
