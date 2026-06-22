@@ -53,6 +53,17 @@ two `idp_role_maps` rows on first boot so login works with zero manual setup.
 > The realm export uses `redirectUris: ["*"]` / `webOrigins: ["*"]` — fine for a
 > throwaway lab realm, never for production.
 
+### Gotcha: Keycloak "Verify Profile" blocks login for users missing a name
+
+By default Keycloak's user-profile feature attaches a `VERIFY_PROFILE` required
+action to any account missing `firstName`/`lastName`. Such a user is bounced to
+a "Review your profile" page after entering credentials and **never reaches the
+app's callback** — so it can look like an SSO failure when it's really Keycloak
+holding the login. The imported `alice`/`bob` have names, so they're fine; if
+you add test users via the admin console or API, give them first/last names (or
+clear the required action) so the flow completes. Real Entra/Keycloak users
+normally have these populated.
+
 ## Break-glass (local accounts always work)
 
 Local username/password sign-in (`/auth/login`) is never removed — the seed
