@@ -1,0 +1,39 @@
+# SSO dev overlay — adds Keycloak as a stand-in for Entra ID so you can test the
+# OIDC flow without an Azure tenant. Layer it on top of the base compose:
+#
+#   export LAN_IP=192.168.1.50        # your dev machine's LAN IP (NOT localhost)
+#   docker compose -f docker-compose.yml -f docker-compose.sso-dev.yml up --build
+#
+# Why LAN_IP and not localhost: the browser and the api container must reach
+# Keycloak at the SAME URL so the token issuer matches on both sides. localhost
+# means "this container" inside api, so a routable host IP is the simplest fix.
+#
+# Keycloak admin console: http://<LAN_IP>:8081  (admin / admin)
+# Pre-imported realm "pentrack" with a confidential client + two groups.
+# Test users (password "password"): alice -> pentrack-admins, bob -> pentrack-members.
+#
+# Run the Vite frontend with:  npm run dev -- --host  (so it's on <LAN_IP>:5173)
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--http-port=8081", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./docs/keycloak/pentrack-realm.json:/opt/keycloak/data/import/pentrack-realm.json:ro
+
+  api:
+    environment:
+      OIDC_ENABLED: "true"
+      OIDC_AUTHORITY: "http://${LAN_IP}:8081/realms/pentrack"
+      OIDC_CLIENT_ID: "pentrack"
+      OIDC_CLIENT_SECRET: "pentrack-dev-secret"
+      OIDC_REDIRECT_URI: "http://${LAN_IP}:5173/api/auth/sso/callback"
+      OIDC_POST_LOGIN_REDIRECT: "http://${LAN_IP}:5173/"
+      OIDC_GROUPS_CLAIM: "groups"
+      OIDC_BOOTSTRAP_ADMIN_GROUP: "/pentrack-admins"
+      OIDC_BOOTSTRAP_MEMBER_GROUP: "/pentrack-members"

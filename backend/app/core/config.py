@@ -21,10 +21,26 @@ class Settings(BaseSettings):
     # Storage
     attachments_dir: str = "/data/attachments"
 
-    # Entra ID (Phase 5 — stubbed)
-    entra_tenant_id: str = ""
-    entra_client_id: str = ""
-    entra_client_secret: str = ""
+    # OIDC / Entra ID SSO.
+    # The app authenticates against any OIDC provider (Entra in prod, Keycloak
+    # in the home lab) and then issues its OWN app JWT, so the rest of the API
+    # is unchanged. Only the authority URL differs between environments.
+    oidc_enabled: bool = False
+    oidc_authority: str = ""        # discovery base, e.g.
+                                    # https://login.microsoftonline.com/<tenant-id>/v2.0
+    oidc_client_id: str = ""
+    oidc_client_secret: str = ""
+    oidc_redirect_uri: str = ""     # must match the IdP app registration, e.g.
+                                    # https://pentrack.example.com/api/auth/sso/callback
+    oidc_scopes: str = "openid profile email"
+    oidc_groups_claim: str = "groups"   # token claim holding group identifiers
+                                        # (object-ID GUIDs in Entra; group paths in Keycloak)
+    oidc_post_login_redirect: str = "/"  # frontend URL to land on after SSO
+
+    # Non-prod convenience: seed two IdpRoleMap rows on first boot so a fresh
+    # Keycloak realm works without manually creating mappings. Leave blank in prod.
+    oidc_bootstrap_admin_group: str = ""
+    oidc_bootstrap_member_group: str = ""
 
 
 @lru_cache

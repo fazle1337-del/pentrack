@@ -13,6 +13,7 @@ from app.routers import (
     auth,
     bookings,
     findings,
+    idp_maps,
     imports,
     scopes,
     teams_users,
@@ -105,12 +106,50 @@ def migrate_schedule_feature():
         )
 
 
+def seed_idp_bootstrap():
+    """Non-prod convenience: if SSO is on and bootstrap groups are configured,
+    seed the corresponding IdpRoleMap rows once (only when the table is empty),
+    so a fresh Keycloak realm logs in without manual mapping setup."""
+    if not settings.oidc_enabled:
+        return
+    if not (settings.oidc_bootstrap_admin_group or settings.oidc_bootstrap_member_group):
+        return
+    from app.models.models import IdpRoleMap
+
+    db = SessionLocal()
+    try:
+        if db.query(IdpRoleMap).count() > 0:
+            return
+        rows = []
+        if settings.oidc_bootstrap_admin_group:
+            rows.append(
+                IdpRoleMap(
+                    idp_group_id=settings.oidc_bootstrap_admin_group,
+                    label="bootstrap admin group",
+                    role=Role.admin,
+                )
+            )
+        if settings.oidc_bootstrap_member_group:
+            rows.append(
+                IdpRoleMap(
+                    idp_group_id=settings.oidc_bootstrap_member_group,
+                    label="bootstrap member group",
+                    role=Role.member,
+                )
+            )
+        db.add_all(rows)
+        db.commit()
+    finally:
+        db.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     migrate_schedule_feature()
     sync_missing_columns()
     seed_admin()
+    seed_idp_bootstrap()
     yield
 
 
@@ -125,6 +164,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(idp_maps.router)
 app.include_router(teams_users.router)
 app.include_router(tests.router)
 app.include_router(findings.router)
