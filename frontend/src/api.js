@@ -48,7 +48,34 @@ export class ApiError extends Error {
   }
 }
 
+// Full-page navigation (not fetch) — the backend 302-redirects to the IdP.
+export const SSO_LOGIN_URL = "/api/auth/sso/login";
+
+// After SSO the backend redirects back with the result in the URL fragment
+// (#sso_token=... or #sso_error=...). Read it once on load, then scrub the URL
+// so the token isn't left in the address bar / history.
+export function consumeSsoRedirect() {
+  const hash = window.location.hash || "";
+  const tok = hash.match(/sso_token=([^&]+)/);
+  const err = hash.match(/sso_error=([^&]+)/);
+  if (tok || err) {
+    history.replaceState(null, "", window.location.pathname + window.location.search);
+  }
+  if (tok) {
+    setToken(decodeURIComponent(tok[1]));
+    return { token: true };
+  }
+  if (err) return { error: decodeURIComponent(err[1]) };
+  return null;
+}
+
 export const api = {
+  getAuthConfig: () => request("/auth/config"),
+  me: () => request("/auth/me"),
+  // SSO group -> role mappings (admin-only)
+  listIdpRoleMaps: () => request("/idp-role-maps"),
+  createIdpRoleMap: (body) => request("/idp-role-maps", { method: "POST", body }),
+  deleteIdpRoleMap: (id) => request(`/idp-role-maps/${id}`, { method: "DELETE" }),
   async login(email, password) {
     const form = new URLSearchParams();
     form.set("username", email);

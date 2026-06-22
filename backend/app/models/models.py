@@ -49,6 +49,24 @@ class User(Base):
     team: Mapped["Team | None"] = relationship(back_populates="users")
 
 
+class IdpRoleMap(Base):
+    """Maps an identity-provider group to an app role (and, optionally, a team).
+    Evaluated at SSO login: the user's group claims are looked up here and the
+    highest-privilege match wins. Decoupling the mapping from code lets you
+    re-point Entra group GUIDs without a redeploy. ``idp_group_id`` holds the
+    raw claim value — an object-ID GUID in Entra, a group path in Keycloak."""
+
+    __tablename__ = "idp_role_maps"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    idp_group_id: Mapped[str] = mapped_column(
+        String(200), unique=True, nullable=False, index=True
+    )
+    label: Mapped[str | None] = mapped_column(String(200))  # human note, e.g. group name
+    role: Mapped[Role] = mapped_column(SAEnum(Role), nullable=False)
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
+
+
 class Test(Base):
     __tablename__ = "tests"
 

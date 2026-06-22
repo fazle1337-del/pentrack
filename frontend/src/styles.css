@@ -105,6 +105,10 @@ textarea{resize:vertical;min-height:60px}
 .login p{color:var(--muted);margin:0 0 20px;font-size:13px}
 .login .field{margin-bottom:14px}
 .err{color:var(--crit);font-size:12px;margin:8px 0 0}
+.sso-divider{display:flex;align-items:center;gap:10px;margin:16px 0;color:var(--muted);font-size:12px}
+.sso-divider::before,.sso-divider::after{content:"";flex:1;height:1px;background:var(--line)}
+.btn-sso{display:block;width:100%;text-align:center;text-decoration:none;box-sizing:border-box;background:transparent;border:1px solid var(--line);color:var(--text)}
+.btn-sso:hover{border-color:#33394a;filter:none}
 
 /* generic page states */
 .empty{padding:48px;text-align:center;color:var(--muted)}
