@@ -1,4 +1,6 @@
 from functools import lru_cache
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,6 +32,10 @@ class Settings(BaseSettings):
                                     # https://login.microsoftonline.com/<tenant-id>/v2.0
     oidc_client_id: str = ""
     oidc_client_secret: str = ""
+    # Read the client secret from a file instead of the env var, so it never
+    # has to live in a committed compose. Takes precedence when the file exists.
+    # On Umbrel, point this at a file under the app's persistent data dir.
+    oidc_client_secret_file: str = ""
     oidc_redirect_uri: str = ""     # must match the IdP app registration, e.g.
                                     # https://pentrack.example.com/api/auth/sso/callback
     oidc_scopes: str = "openid profile email"
@@ -45,4 +51,10 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+    # File-based secret wins over the env var when present (Docker-secret style).
+    if settings.oidc_client_secret_file:
+        path = Path(settings.oidc_client_secret_file)
+        if path.is_file():
+            settings.oidc_client_secret = path.read_text().strip()
+    return settings

@@ -31,7 +31,69 @@ uvicorn app.main:app --reload
 
 - `POST /auth/login` (form: `username`=email, `password`) → JWT bearer token.
 - Send `Authorization: Bearer <token>` on all other requests.
-- Local accounts now; Microsoft Entra ID SSO arrives in Phase 5.
+- Local accounts plus optional Microsoft Entra ID / OIDC SSO (see below).
+
+## Single sign-on (Microsoft Entra ID / OIDC)
+
+SSO is **optional and off by default**. The provider only authenticates; the app
+then issues its own JWT, so all RBAC is unchanged. Identity-provider **groups map
+to app roles**, and **local login always remains as a break-glass path** (SSO will
+not take over an email already owned by a local account). For the home-lab Keycloak
+test harness, see [`docs/sso-testing.md`](docs/sso-testing.md).
+
+### 1. Register the app in Entra
+
+1. **App registrations → New registration.** Single-tenant. Redirect URI (platform
+   **Web**): `https://<your-host>/api/auth/sso/callback` — exact match, no trailing slash.
+2. From **Overview**, copy the **Application (client) ID** and **Directory (tenant) ID**.
+3. **Certificates & secrets → New client secret** → copy the `Value` (shown once).
+4. **Token configuration → Add groups claim → Security groups** (added to the ID token).
+5. **Groups → New group** (Security) for e.g. `PenTrack-Admins` / `PenTrack-Members`;
+   copy each group's **Object Id** (GUID).
+
+### 2. Configure the app
+
+Set these on the `api` service (non-secret values only — safe to commit):
+
+| Env var | Value |
+|---|---|
+| `OIDC_ENABLED` | `true` |
+| `OIDC_AUTHORITY` | `https://login.microsoftonline.com/<tenant-id>/v2.0` |
+| `OIDC_CLIENT_ID` | application (client) ID |
+| `OIDC_REDIRECT_URI` | `https://<your-host>/api/auth/sso/callback` |
+| `OIDC_POST_LOGIN_REDIRECT` | `https://<your-host>/` |
+| `OIDC_GROUPS_CLAIM` | `groups` |
+| `OIDC_BOOTSTRAP_ADMIN_GROUP` | admin group GUID *(optional: auto-seeds the mapping on first boot)* |
+| `OIDC_BOOTSTRAP_MEMBER_GROUP` | member group GUID *(optional)* |
+
+### 3. Provide the client secret without committing it
+
+The secret is read from a **file**, never an env var in git. Set the path and mount
+a file the app reads at startup (file contents win over `OIDC_CLIENT_SECRET`):
+
+```yaml
+environment:
+  OIDC_CLIENT_SECRET_FILE: /data/secrets/oidc_client_secret
+volumes:
+  - ${APP_DATA_DIR}/data/secrets:/data/secrets:ro
+```
+
+Create the secret once on the host (it lives in the app's persistent data dir, so it
+survives app updates; rotate by overwriting the file):
+
+```bash
+mkdir -p ~/umbrel/app-data/tony-pen-test-tracker/data/secrets
+printf '%s' 'YOUR_ENTRA_SECRET' > ~/umbrel/app-data/tony-pen-test-tracker/data/secrets/oidc_client_secret
+```
+
+(For non-Umbrel/dev runs you can instead just set `OIDC_CLIENT_SECRET` directly.)
+
+### 4. Map groups to roles
+
+`OIDC_BOOTSTRAP_*` seeds the two mappings on first boot. Afterwards, an admin manages
+them in the app's **Access** tab (or via the admin-only `/idp-role-maps` API): each row
+maps a group GUID → `admin`/`member` (+ optional team). A user whose groups map to no
+role is denied; the break-glass local admin is always available to fix mappings.
 
 ## RBAC summary
 
@@ -69,5 +131,5 @@ uvicorn app.main:app --reload
 2. CSV import (flexible column mapping per vendor) + Alembic
 3. BAU planning view
 4. Filterable dashboard
-5. Entra ID SSO
+5. ✅ Entra ID / OIDC SSO with group→role mapping
 6. Azure Blob storage + deployment manifests
