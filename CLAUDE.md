@@ -66,6 +66,8 @@ docker buildx imagetools inspect tonybooom/pen-test-tracker-frontend:X.Y.Z | gre
 
 ## Umbrel-specific constraints
 
+- The app's **host port is `8099`** (set in the store repo's `umbrel-app.yml` `port:`), moved off the default `8080` to avoid a clash with Pi-hole on the Umbrel server. The container-internal port stays `8080` (frontend nginx + `app_proxy` `APP_PORT`), namespaced inside the app network. Point any reverse proxy / 443 upstream at `8099`.
+- No default-credentials popup: the `defaultUsername`/`defaultPassword` manifest fields are intentionally **omitted** (they trigger Umbrel's built-in credentials modal, which could block navigation behind an HTTPS proxy). First-login details live in the manifest `description` instead.
 - Umbrel community apps don't handle `.env`-style secrets reliably. Use `${APP_SEED}` for the JWT secret and Postgres password, `${APP_PASSWORD}` for the seed admin password. Hardcode other env vars directly in the compose file.
 - **App-store repo is strictly separate from the main project repo.** The `tony-pen-test-tracker/` folder must contain **only** `docker-compose.yml` and `umbrel-app.yml`. Watch for main-project files leaking into it — this has bitten us repeatedly.
 
