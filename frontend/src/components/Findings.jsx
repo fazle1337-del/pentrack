@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api.js";
 import ImportModal from "./ImportModal.jsx";
+import RelatedPanel from "./RelatedPanel.jsx";
 import {
   NET_RATINGS,
   FINDING_STATUSES,
@@ -69,7 +70,7 @@ function exportCsv(rows, testById, teamName, userName) {
   URL.revokeObjectURL(url);
 }
 
-export default function Findings({ teams, users }) {
+export default function Findings({ teams, users, isAdmin, onNavigate, nav, onNavConsumed }) {
   const [findings, setFindings] = useState([]);
   const [tests, setTests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -100,6 +101,26 @@ export default function Findings({ teams, users }) {
   useEffect(() => {
     load();
   }, []);
+
+  // Consume a cross-tab navigation request: open the targeted finding's drawer.
+  useEffect(() => {
+    if (!nav || loading) return;
+    const f = findings.find((x) => x.id === nav.id);
+    if (f) setSelected(f);
+    onNavConsumed?.();
+  }, [nav, loading, findings]);
+
+  async function removeFinding(f, e) {
+    e.stopPropagation();
+    if (!window.confirm(`Delete finding “${f.vulnerability || "Untitled"}”? This cannot be undone.`)) return;
+    try {
+      await api.deleteFinding(f.id);
+      setFindings((list) => list.filter((x) => x.id !== f.id));
+      if (selected?.id === f.id) setSelected(null);
+    } catch (e2) {
+      setError(e2.message);
+    }
+  }
 
   const testById = useMemo(() => {
     const m = {};
@@ -287,6 +308,7 @@ export default function Findings({ teams, users }) {
                   <th onClick={() => setSortKey("sla_status")}>
                     SLA <span className="ar">{arrow("sla_status")}</span>
                   </th>
+                  {isAdmin && <th />}
                 </tr>
               </thead>
               <tbody>
@@ -325,6 +347,17 @@ export default function Findings({ teams, users }) {
                       <td>
                         <span className={"sla " + f.sla_status}>{f.sla_status}</span>
                       </td>
+                      {isAdmin && (
+                        <td>
+                          <button
+                            className="row-del"
+                            title="Delete finding"
+                            onClick={(e) => removeFinding(f, e)}
+                          >
+                            🗑
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -341,10 +374,16 @@ export default function Findings({ teams, users }) {
             users={users}
             testName={testName[selected.test_id]}
             test={testById[selected.test_id]}
+            isAdmin={isAdmin}
+            onNavigate={onNavigate}
             onClose={() => setSelected(null)}
             onSaved={(updated) => {
               setFindings((list) => list.map((x) => (x.id === updated.id ? updated : x)));
               setSelected(updated);
+            }}
+            onDeleted={(id) => {
+              setFindings((list) => list.filter((x) => x.id !== id));
+              setSelected(null);
             }}
             onTestSaved={(updatedTest) => {
               setTests((list) => list.map((x) => (x.id === updatedTest.id ? updatedTest : x)));
@@ -366,7 +405,7 @@ export default function Findings({ teams, users }) {
   );
 }
 
-function FindingDrawer({ finding, teams, users, testName, test, onClose, onSaved, onTestSaved }) {
+function FindingDrawer({ finding, teams, users, testName, test, isAdmin, onNavigate, onClose, onSaved, onDeleted, onTestSaved }) {
   const [form, setForm] = useState({ ...finding });
   const [testForm, setTestForm] = useState({
     penetration_tester: test?.penetration_tester || "",
@@ -455,6 +494,19 @@ function FindingDrawer({ finding, teams, users, testName, test, onClose, onSaved
       setAtts(await api.listFindingAttachments(finding.id));
     } catch (e2) {
       setErr(e2.message);
+    }
+  }
+
+  async function del() {
+    if (!window.confirm(`Delete finding “${form.vulnerability || "Untitled"}”? This cannot be undone.`)) return;
+    setBusy(true);
+    setErr("");
+    try {
+      await api.deleteFinding(finding.id);
+      onDeleted?.(finding.id);
+    } catch (e) {
+      setErr(e.message);
+      setBusy(false);
     }
   }
 
@@ -657,10 +709,20 @@ function FindingDrawer({ finding, teams, users, testName, test, onClose, onSaved
             <input type="file" style={{ display: "none" }} onChange={upload} />
           </label>
         </div>
+        <RelatedPanel
+          reference={testForm.unique_test_reference}
+          self={{ type: "finding", id: finding.id }}
+          onNavigate={onNavigate}
+        />
         {err && <p className="err">{err}</p>}
         <button className="btn" style={{ width: "100%" }} disabled={busy} onClick={save}>
           {busy ? "Saving…" : "Save changes"}
         </button>
+        {isAdmin && (
+          <button className="btn danger" style={{ width: "100%", marginTop: 8 }} disabled={busy} onClick={del}>
+            Delete finding
+          </button>
+        )}
       </div>
     </aside>
   );

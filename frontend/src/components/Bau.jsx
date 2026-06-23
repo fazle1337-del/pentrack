@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api.js";
 import { ENGAGEMENT_STATUSES, engagementClass } from "../constants.js";
+import RelatedPanel from "./RelatedPanel.jsx";
 
 const WEEK_W = 26; // px per week column
 const MS_WEEK = 7 * 24 * 3600 * 1000;
@@ -45,10 +46,8 @@ function blankBooking() {
   };
 }
 
-export default function Bau() {
+export default function Bau({ onNavigate, nav, onNavConsumed }) {
   const [bookings, setBookings] = useState([]);
-  const [tests, setTests] = useState([]);
-  const [scopes, setScopes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState(null);
@@ -63,12 +62,7 @@ export default function Bau() {
     setLoading(true);
     setError("");
     try {
-      const [b, t, s] = await Promise.all([
-        api.listBookings(), api.listTests(), api.listScopes(),
-      ]);
-      setBookings(b);
-      setTests(t);
-      setScopes(s);
+      setBookings(await api.listBookings());
     } catch (e) {
       setError(e.message);
     } finally {
@@ -79,16 +73,13 @@ export default function Bau() {
     load();
   }, []);
 
-  const testByRef = useMemo(() => {
-    const m = {};
-    tests.forEach((t) => t.unique_test_reference && (m[t.unique_test_reference] = t));
-    return m;
-  }, [tests]);
-  const scopeByRef = useMemo(() => {
-    const m = {};
-    scopes.forEach((s) => s.unique_test_reference && (m[s.unique_test_reference] = s));
-    return m;
-  }, [scopes]);
+  // Consume a cross-tab navigation request: open the targeted booking's drawer.
+  useEffect(() => {
+    if (!nav || loading) return;
+    const b = bookings.find((x) => x.id === nav.id);
+    if (b) setSelected(b);
+    onNavConsumed?.();
+  }, [nav, loading, bookings]);
 
   const weeks = useMemo(() => {
     const out = [];
@@ -223,8 +214,7 @@ export default function Bau() {
           <BookingDrawer
             key={selected.id || "new"}
             booking={selected}
-            testByRef={testByRef}
-            scopeByRef={scopeByRef}
+            onNavigate={onNavigate}
             onClose={() => setSelected(null)}
             onSaved={() => { setSelected(null); load(); }}
             onDeleted={() => { setSelected(null); load(); }}
@@ -235,7 +225,7 @@ export default function Bau() {
   );
 }
 
-function BookingDrawer({ booking, testByRef, scopeByRef, onClose, onSaved, onDeleted }) {
+function BookingDrawer({ booking, onNavigate, onClose, onSaved, onDeleted }) {
   const isNew = !!booking.__new;
   const [form, setForm] = useState({
     title: booking.title || "",
@@ -250,10 +240,6 @@ function BookingDrawer({ booking, testByRef, scopeByRef, onClose, onSaved, onDel
   function set(k, v) {
     setForm((f) => ({ ...f, [k]: v }));
   }
-
-  const ref = (form.unique_test_reference || "").trim();
-  const linkedTest = ref ? testByRef[ref] : null;
-  const linkedScope = ref ? scopeByRef[ref] : null;
 
   async function save() {
     if (!form.title.trim()) { setErr("Title is required"); return; }
@@ -329,16 +315,11 @@ function BookingDrawer({ booking, testByRef, scopeByRef, onClose, onSaved, onDel
           </select>
         </div>
 
-        {ref && (
-          <div className="field">
-            <label>Linked by “{ref}”</label>
-            <div className="val muted">
-              {linkedTest ? `Test: ${linkedTest.name} (${linkedTest.status})` : "No matching test"}
-              <br />
-              {linkedScope ? `Scope: ${linkedScope.title}` : "No matching scope"}
-            </div>
-          </div>
-        )}
+        <RelatedPanel
+          reference={form.unique_test_reference}
+          self={{ type: "booking", id: booking.id }}
+          onNavigate={onNavigate}
+        />
 
         {!isNew && (
           <p className="muted" style={{ fontSize: 11, marginTop: -4 }}>

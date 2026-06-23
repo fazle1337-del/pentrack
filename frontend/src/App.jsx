@@ -9,9 +9,20 @@ import AccessControl from "./components/AccessControl.jsx";
 
 const BASE_TABS = ["Findings", "Tests", "BAU Schedule", "Scopes"];
 
+// Which tab owns each related-entity type, for cross-tab navigation.
+const TYPE_TAB = {
+  finding: "Findings",
+  test: "Tests",
+  booking: "BAU Schedule",
+  scope: "Scopes",
+};
+
 export default function App() {
   const [authed, setAuthed] = useState(false);
   const [tab, setTab] = useState("Findings");
+  // Pending cross-tab navigation target: { type, id }. The destination tab
+  // consumes it (opens that entity's drawer) then clears it via onNavConsumed.
+  const [nav, setNav] = useState(null);
   const [teams, setTeams] = useState([]);
   const [users, setUsers] = useState([]);
   const [me, setMe] = useState(null);
@@ -47,6 +58,13 @@ export default function App() {
     setMe(null);
   }
 
+  function navTo(type, id) {
+    const dest = TYPE_TAB[type];
+    if (!dest) return;
+    setNav({ type, id });
+    setTab(dest);
+  }
+
   if (!authed) return <Login onLoggedIn={() => setAuthed(true)} ssoError={ssoError} />;
 
   const isAdmin = me?.role === "admin";
@@ -77,10 +95,40 @@ export default function App() {
         </button>
       </div>
 
-      {tab === "Findings" && <Findings teams={teams} users={users} />}
-      {tab === "Tests" && <Tests teams={teams} users={users} />}
-      {tab === "BAU Schedule" && <Bau />}
-      {tab === "Scopes" && <Scopes />}
+      {tab === "Findings" && (
+        <Findings
+          teams={teams}
+          users={users}
+          isAdmin={isAdmin}
+          onNavigate={navTo}
+          nav={nav?.type === "finding" ? nav : null}
+          onNavConsumed={() => setNav(null)}
+        />
+      )}
+      {tab === "Tests" && (
+        <Tests
+          teams={teams}
+          users={users}
+          isAdmin={isAdmin}
+          onNavigate={navTo}
+          nav={nav?.type === "test" ? nav : null}
+          onNavConsumed={() => setNav(null)}
+        />
+      )}
+      {tab === "BAU Schedule" && (
+        <Bau
+          onNavigate={navTo}
+          nav={nav?.type === "booking" ? nav : null}
+          onNavConsumed={() => setNav(null)}
+        />
+      )}
+      {tab === "Scopes" && (
+        <Scopes
+          onNavigate={navTo}
+          nav={nav?.type === "scope" ? nav : null}
+          onNavConsumed={() => setNav(null)}
+        />
+      )}
       {tab === "Access" && isAdmin && <AccessControl teams={teams} />}
     </>
   );

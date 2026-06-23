@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { ratingBg, statusDot, ENGAGEMENT_STATUSES } from "../constants.js";
+import RelatedPanel from "./RelatedPanel.jsx";
 
 const BAU_OPTS = ["BAU", "Project"];
 
-export default function Tests({ teams, users }) {
+export default function Tests({ teams, users, isAdmin, onNavigate, nav, onNavConsumed }) {
   const [tests, setTests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -24,6 +25,31 @@ export default function Tests({ teams, users }) {
     load();
   }, []);
 
+  // Consume a cross-tab navigation request: open the targeted test's drawer.
+  useEffect(() => {
+    if (!nav || loading) return;
+    const t = tests.find((x) => x.id === nav.id);
+    if (t) setOpenTest(t);
+    onNavConsumed?.();
+  }, [nav, loading, tests]);
+
+  async function removeTest(t, e) {
+    e.stopPropagation();
+    let n = 0;
+    try {
+      n = (await api.listFindings(t.id)).length;
+    } catch {}
+    const extra = n ? ` and its ${n} finding${n === 1 ? "" : "s"}` : "";
+    if (!window.confirm(`Delete test “${t.name}”${extra}? This cannot be undone.`)) return;
+    try {
+      await api.deleteTest(t.id);
+      setTests((list) => list.filter((x) => x.id !== t.id));
+      if (openTest?.id === t.id) setOpenTest(null);
+    } catch (e2) {
+      setError(e2.message);
+    }
+  }
+
   if (loading) return <div className="loading">Loading tests…</div>;
   if (error) return <div className="empty">{error}</div>;
 
@@ -33,6 +59,15 @@ export default function Tests({ teams, users }) {
         {tests.length === 0 && <div className="empty">No tests yet. Import a CSV to create one.</div>}
         {tests.map((t) => (
           <div key={t.id} className="cardrow" onClick={() => setOpenTest(t)}>
+            {isAdmin && (
+              <button
+                className="row-del"
+                title="Delete test"
+                onClick={(e) => removeTest(t, e)}
+              >
+                🗑
+              </button>
+            )}
             <h3>{t.name}</h3>
             <div className="meta">
               <span className="badge">{t.bau_or_project || "—"}</span>
@@ -49,10 +84,16 @@ export default function Tests({ teams, users }) {
         <TestDrawer
           key={openTest.id}
           test={openTest}
+          isAdmin={isAdmin}
+          onNavigate={onNavigate}
           onClose={() => setOpenTest(null)}
           onSaved={(updated) => {
             setTests((list) => list.map((x) => (x.id === updated.id ? updated : x)));
             setOpenTest(updated);
+          }}
+          onDeleted={(id) => {
+            setTests((list) => list.filter((x) => x.id !== id));
+            setOpenTest(null);
           }}
         />
       )}
@@ -60,7 +101,7 @@ export default function Tests({ teams, users }) {
   );
 }
 
-function TestDrawer({ test, onClose, onSaved }) {
+function TestDrawer({ test, isAdmin, onNavigate, onClose, onSaved, onDeleted }) {
   const [form, setForm] = useState({ ...test });
   const [findings, setFindings] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -94,6 +135,22 @@ function TestDrawer({ test, onClose, onSaved }) {
     } catch (e) {
       setErr(e.message);
     } finally {
+      setBusy(false);
+    }
+  }
+
+  async function del() {
+    const extra = findings.length
+      ? ` and its ${findings.length} finding${findings.length === 1 ? "" : "s"}`
+      : "";
+    if (!window.confirm(`Delete test “${form.name}”${extra}? This cannot be undone.`)) return;
+    setBusy(true);
+    setErr("");
+    try {
+      await api.deleteTest(test.id);
+      onDeleted?.(test.id);
+    } catch (e) {
+      setErr(e.message);
       setBusy(false);
     }
   }
@@ -151,10 +208,20 @@ function TestDrawer({ test, onClose, onSaved }) {
             <input className="in" type="date" value={form.scheduled_date || ""} onChange={(e) => set("scheduled_date", e.target.value)} />
           </div>
         </div>
+        <RelatedPanel
+          reference={form.unique_test_reference}
+          self={{ type: "test", id: test.id }}
+          onNavigate={onNavigate}
+        />
         {err && <p className="err">{err}</p>}
         <button className="btn" style={{ width: "100%" }} disabled={busy} onClick={save}>
           {busy ? "Saving…" : "Save test"}
         </button>
+        {isAdmin && (
+          <button className="btn danger" style={{ width: "100%", marginTop: 8 }} disabled={busy} onClick={del}>
+            Delete test
+          </button>
+        )}
 
         <h4 style={{ color: "var(--muted)", fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em", marginTop: 22 }}>
           Findings in this test ({findings.length})
@@ -163,7 +230,13 @@ function TestDrawer({ test, onClose, onSaved }) {
           <div className="muted">No findings linked.</div>
         ) : (
           findings.map((f) => (
-            <div className="att" key={f.id} style={{ justifyContent: "space-between" }}>
+            <div
+              className="att"
+              key={f.id}
+              style={{ justifyContent: "space-between", cursor: "pointer" }}
+              onClick={() => onNavigate?.("finding", f.id)}
+              title="Open finding"
+            >
               <span>
                 <span className={"sw " + ratingBg(f.net_rating)} style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, marginRight: 7 }} />
                 {f.vulnerability || "Untitled"}

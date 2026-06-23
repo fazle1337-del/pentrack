@@ -114,8 +114,22 @@ textarea{resize:vertical;min-height:60px}
 .empty{padding:48px;text-align:center;color:var(--muted)}
 .loading{padding:32px;color:var(--muted)}
 .section-pad{padding:18px}
-.cardrow{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:10px;cursor:pointer}
+.cardrow{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:10px;cursor:pointer}
 .cardrow:hover{border-color:#33394a}
+
+/* Delete affordances: row trash icon + drawer danger button */
+.row-del{position:absolute;top:10px;right:10px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:4px 6px;border-radius:6px;opacity:.55}
+table .row-del{position:static;opacity:.55}
+.row-del:hover{color:var(--crit);background:rgba(255,92,108,.1);opacity:1}
+.btn.danger{background:transparent;border:1px solid var(--crit);color:var(--crit)}
+.btn.danger:hover{background:rgba(255,92,108,.12);filter:none}
+
+/* Related-entity links (cross-tab navigation) */
+.related-link{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;margin-bottom:6px;cursor:pointer;color:var(--text);font:inherit}
+.related-link:hover{border-color:var(--accent)}
+.related-type{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--accent);flex:0 0 auto}
+.related-label{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.related-sub{flex:0 0 auto;font-size:11px;color:var(--muted)}
 .cardrow h3{margin:0 0 4px;font-size:14px}
 .cardrow .meta{color:var(--muted);font-size:12px}
 .badge{display:inline-block;font-size:11px;padding:2px 7px;border-radius:5px;background:var(--panel2);border:1px solid var(--line);color:var(--muted);margin-right:6px}
