@@ -78,13 +78,33 @@ volumes:
   - ${APP_DATA_DIR}/data/secrets:/data/secrets:ro
 ```
 
-Create the secret once on the host (it lives in the app's persistent data dir, so it
-survives app updates; rotate by overwriting the file):
+Create the secret on the host. It lives in the app's persistent data dir, so it
+survives app updates; rotate by overwriting the file.
 
 ```bash
-mkdir -p ~/umbrel/app-data/tony-pen-test-tracker/data/secrets
-printf '%s' 'YOUR_ENTRA_SECRET' > ~/umbrel/app-data/tony-pen-test-tracker/data/secrets/oidc_client_secret
+sudo mkdir -p ~/umbrel/app-data/tony-pen-test-tracker/data/secrets
+printf '%s' 'YOUR_ENTRA_SECRET' | sudo tee \
+  ~/umbrel/app-data/tony-pen-test-tracker/data/secrets/oidc_client_secret >/dev/null
 ```
+
+> **⚠️ Order matters — create the directory + file *before* the container is
+> created, then recreate the container.** If the `data/secrets` dir doesn't exist
+> when the app first starts, Docker auto-creates an empty one and bind-mounts
+> *that*; a file you add afterwards lands in a different directory the running
+> container can't see (`cat … : No such file or directory`), and the secret reads
+> as empty so SSO fails with `login_failed`. A plain **restart won't fix it** — the
+> stale mount persists. After the file exists, **recreate** the container (Umbrel
+> UI: **Stop** then **Start**, *not* Restart — or `docker compose up -d
+> --force-recreate`) so it binds the real directory and reads the secret at startup.
+
+**Verify the container can read it** before testing login:
+
+```bash
+sudo docker exec tony-pen-test-tracker_api_1 cat /data/secrets/oidc_client_secret; echo
+```
+
+It must print your secret. To **rotate**: overwrite the file, then restart the api
+container (`sudo docker restart tony-pen-test-tracker_api_1`) so it re-reads at startup.
 
 (For non-Umbrel/dev runs you can instead just set `OIDC_CLIENT_SECRET` directly.)
 
