@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
+import RelatedPanel from "./RelatedPanel.jsx";
 
-export default function Scopes() {
+export default function Scopes({ onNavigate, nav, onNavConsumed }) {
   const [scopes, setScopes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -21,6 +22,14 @@ export default function Scopes() {
   useEffect(() => {
     load();
   }, []);
+
+  // Consume a cross-tab navigation request: open the targeted scope's drawer.
+  useEffect(() => {
+    if (!nav || loading) return;
+    const s = scopes.find((x) => x.id === nav.id);
+    if (s) setSelected(s);
+    onNavConsumed?.();
+  }, [nav, loading, scopes]);
 
   return (
     <div className="sched">
@@ -58,6 +67,7 @@ export default function Scopes() {
           <ScopeDrawer
             key={selected.id || "new"}
             scope={selected}
+            onNavigate={onNavigate}
             onClose={() => setSelected(null)}
             onSaved={() => { setSelected(null); load(); }}
             onDeleted={() => { setSelected(null); load(); }}
@@ -68,7 +78,7 @@ export default function Scopes() {
   );
 }
 
-function ScopeDrawer({ scope, onClose, onSaved, onDeleted }) {
+function ScopeDrawer({ scope, onNavigate, onClose, onSaved, onDeleted }) {
   const isNew = !!scope.__new;
   const [form, setForm] = useState({
     title: scope.title || "",
@@ -179,6 +189,12 @@ function ScopeDrawer({ scope, onClose, onSaved, onDeleted }) {
         ) : (
           <p className="muted" style={{ fontSize: 11 }}>Save the scope first, then add files.</p>
         )}
+
+        <RelatedPanel
+          reference={form.unique_test_reference}
+          self={{ type: "scope", id: scope.id }}
+          onNavigate={onNavigate}
+        />
 
         {err && <p className="err">{err}</p>}
         <button className="btn" style={{ width: "100%" }} disabled={busy} onClick={save}>

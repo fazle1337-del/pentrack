@@ -89,11 +89,15 @@ export const api = {
   getTest: (id) => request(`/tests/${id}`),
   createTest: (body) => request("/tests", { method: "POST", body }),
   updateTest: (id, body) => request(`/tests/${id}`, { method: "PATCH", body }),
+  deleteTest: (id) => request(`/tests/${id}`, { method: "DELETE" }),
   // Findings
   listFindings: (testId) =>
     request(`/findings${testId ? `?test_id=${testId}` : ""}`),
   updateFinding: (id, body) => request(`/findings/${id}`, { method: "PATCH", body }),
   createFinding: (body) => request("/findings", { method: "POST", body }),
+  deleteFinding: (id) => request(`/findings/${id}`, { method: "DELETE" }),
+  // Cross-entity links sharing a unique_test_reference
+  getRelated: (ref) => request(`/related?ref=${encodeURIComponent(ref)}`),
   // Bookings (BAU schedule)
   listBookings: () => request("/bookings"),
   createBooking: (body) => request("/bookings", { method: "POST", body }),

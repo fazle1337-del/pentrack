@@ -21,12 +21,36 @@ RBAC enforces this split. Runs on a self-hosted Umbrel instance (Raspberry Pi 5)
 2. ✅ Frontend UI
 3. ✅ CSV import (live, tested against real data)
 4. ✅ BAU planning module (BAU schedule + shared reference key + scopes-as-forms)
-5. Dashboard ← **next up**
-6. ✅ Entra ID / OIDC SSO — live in prod (release 0.4.1)
-7. Azure portability
+5. ✅ Entra ID / OIDC SSO — live in prod (release 0.4.1)
+6. ✅ Admin delete + cross-entity navigation — live in prod (release 0.5.0)
+7. Dashboard ← **next up**
+8. Azure portability
 
-**Current release: `0.4.1`** (images + Umbrel store). SSO is live on the
+**Current release: `0.5.0`** (images + Umbrel store). SSO is live on the
 production instance `https://cheeseslice.duckdns.org`.
+
+### 0.5.0 — admin delete + cross-entity navigation (done, tested in prod)
+
+- **Admin delete for tests & findings.** The backend `DELETE` endpoints
+  (`routers/tests.py`, `routers/findings.py`, both admin-guarded) already
+  existed; 0.5.0 wires up the missing UI: a row trash icon **and** a delete
+  button in the detail drawer on both the Findings and Tests tabs, gated on
+  `isAdmin` client-side and enforced admin server-side. Deleting a test
+  cascades to its findings (`Test.findings` `cascade="all, delete-orphan"`),
+  so the confirm shows the finding count. Both `DELETE` endpoints now enforce
+  admin via the shared `require_admin` dependency (`delete_finding` previously
+  used an inline `role` check) so the guard is visible in the route signature.
+- **Cross-entity navigation by `unique_test_reference`.** New endpoint
+  `GET /related?ref=<ref>` (`routers/related.py`) returns every test, finding,
+  BAU booking and scope sharing that reference — **all** matches, since the ref
+  is indexed but *not* unique — honouring the same finding RBAC as
+  `GET /findings` (members see only findings they own). The shared
+  `frontend/src/components/RelatedPanel.jsx` renders them as clickable chips in
+  every drawer. Clicking one calls `App.jsx`'s lifted `navTo(type, id)`, which
+  switches to the owning tab and auto-opens that entity's drawer (each tab has a
+  nav-consume effect keyed on a `{type, id}` target). The link is a plain shared
+  string — there is no hard FK between these four entities (see `models.py`
+  notes on `Booking`/`Scope`).
 
 ## Deployment — read this before claiming anything is "deployed"
 
