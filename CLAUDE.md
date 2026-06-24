@@ -37,7 +37,9 @@ production instance `https://cheeseslice.duckdns.org`.
   button in the detail drawer on both the Findings and Tests tabs, gated on
   `isAdmin` client-side and enforced admin server-side. Deleting a test
   cascades to its findings (`Test.findings` `cascade="all, delete-orphan"`),
-  so the confirm shows the finding count.
+  so the confirm shows the finding count. Both `DELETE` endpoints now enforce
+  admin via the shared `require_admin` dependency (`delete_finding` previously
+  used an inline `role` check) so the guard is visible in the route signature.
 - **Cross-entity navigation by `unique_test_reference`.** New endpoint
   `GET /related?ref=<ref>` (`routers/related.py`) returns every test, finding,
   BAU booking and scope sharing that reference — **all** matches, since the ref
