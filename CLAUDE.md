@@ -25,9 +25,36 @@ RBAC enforces this split. Runs on a self-hosted Umbrel instance (Raspberry Pi 5)
 6. ✅ Admin delete + cross-entity navigation — live in prod (release 0.5.0)
 7. Dashboard ← **next up**
 8. Azure portability
+9. Security hardening — see "Security audit" below (issues #5–#9)
 
 **Current release: `0.5.0`** (images + Umbrel store). SSO is live on the
 production instance `https://cheeseslice.duckdns.org`.
+
+## Security audit (2026-06-25) — open items
+
+Full application audit done (static review + live DAST against the running
+Umbrel deployment). Report: `../Security Audit Reports/pentrack-2026-06-25-full-application-audit.md`
+(sibling repo `Gitea/Security Audit Reports`). Verdict: **authz & injection
+defense are strong** (no SQLi/XSS, RBAC enforced consistently, JWT in memory,
+OIDC validated correctly, no mass-assignment); gaps are in session management
+and hardening. Open Gitea issues:
+
+- **#5 (HIGH)** No token invalidation — logout is client-side only; 8h JWT, no
+  `/auth/logout`, no denylist/`token_version`. Disabled accounts stay valid till
+  expiry. Fix: `token_version` claim+column checked in `get_current_user`,
+  bump on logout/password-change; add `/auth/logout`; consider shorter TTL +
+  refresh.
+- **#6 (MED)** No login rate-limiting (12 rapid fails → all 401, no lockout).
+- **#7 (MED)** CORS `allow_origins=["*"]` + `allow_credentials=True` (`main.py:159`).
+- **#8 (MED)** No security headers (CSP/X-Frame-Options/HSTS/nosniff) in `frontend/nginx.conf`.
+- **#9 (MED)** `/api/docs` + `/api/openapi.json` public (disable in prod via
+  `FastAPI(docs_url=None, redoc_url=None, openapi_url=None)`).
+
+**Pick-up plan:** #7+#8+#9 are small config changes → one branch+PR (quick wins).
+#5 and #6 are larger (schema/middleware) → separate PRs. Deployment secrets were
+verified overridden from the weak `config.py` defaults, so prod is not exposed by
+those defaults. Live DAST is reproducible from the Umbrel host against
+`http://127.0.0.1:8099`.
 
 ### 0.5.0 — admin delete + cross-entity navigation (done, tested in prod)
 
