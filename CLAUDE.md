@@ -26,6 +26,9 @@ RBAC enforces this split. Runs on a self-hosted Umbrel instance (Raspberry Pi 5)
 7. Dashboard ← **next up**
 8. Azure portability
 9. Security hardening — see "Security audit" below (issues #5–#9)
+10. EasyVista (ITSM) two-way integration — **planning** (scaffold landed on
+    branch `easyvista-integration`, behind `easyvista_enabled`). See
+    "EasyVista integration" below.
 
 **Current release: `0.5.0`** (images + Umbrel store). SSO is live on the
 production instance `https://cheeseslice.duckdns.org`.
@@ -153,6 +156,40 @@ harness is `docker-compose.sso-dev.yml` + `docs/sso-testing.md`.
   reads empty, and SSO fails with `login_failed`. Verify with
   `sudo docker exec tony-pen-test-tracker_api_1 cat /data/secrets/oidc_client_secret`.
   Rotate by overwriting the file + `docker restart` the api container.
+
+## EasyVista (ITSM) integration — planning
+
+**Status: planning + scaffold only. Not on `main`, not deployed.** A flag-gated
+scaffold (one-directional "push a finding as an EV request") lives on branch
+`easyvista-integration`, OFF by default (`easyvista_enabled`). Guide for the
+scaffold as built: `docs/easyvista-integration.md`.
+
+The intended feature is **bigger** than the scaffold: a stateful **two-way sync**
+(assign → status → comments → close). Requirements are mostly settled; a few
+answers are still pending **from the EV/Entra admin** before building.
+
+- **Open questions to research:** tracked in the **Gitea wiki**, page
+  *"EasyVista integration — open questions"* (`fazle1337/pentrack` wiki). Resolve
+  those before writing Phase-A code.
+- **Locked design decisions:** assignment is **group-based** (finding owner team =
+  Entra group = EV assignee group); a single `pentrack` Entra identity is the
+  requestor; **one ticket per finding**; assign is **admin-only**; EV is the
+  **source of truth**, synced by **polling** (no EV webhooks); status mapping is
+  **data-driven/configurable** for other tenants; comments are **cached**, visible
+  to admins + the owning team, attributed to the real user via the action's
+  `contact_*` field; poll intervals (open vs closed ticket) + on-demand refresh
+  are **admin-tab adjustable**; the poller is **in-process** so it works in both
+  Azure ACR and Umbrel.
+- **EV API endpoints confirmed:** `POST /requests` (create), `GET /requests/{rfc}`
+  (status as `STATUS_EN`/`STATUS_GUID`), `GET /requests/comment/{rfc}` (read
+  comments), `POST /requests/{rfc}/actions` (post a comment as an *action*),
+  close/suspend/reopen endpoints. **Identifier gotcha:** create returns an HREF
+  ending in `REQUEST_ID`, but read/comment/close key off `rfc_number` — so capture
+  `rfc_number` via a `GET` right after create and store *that* (the current
+  scaffold stores the wrong id).
+- **Proposed phasing:** A) assign + status (read-only sync) · B) comments (read) ·
+  C) comments (write) · D) close-from-pentrack · plus admin "Integrations" tab +
+  background poller.
 
 ## Database migrations
 

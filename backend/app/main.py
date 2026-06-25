@@ -15,6 +15,7 @@ from app.routers import (
     findings,
     idp_maps,
     imports,
+    itsm,
     related,
     scopes,
     teams_users,
@@ -174,6 +175,7 @@ app.include_router(imports.router)
 app.include_router(bookings.router)
 app.include_router(scopes.router)
 app.include_router(related.router)
+app.include_router(itsm.router)
 
 
 @app.get("/health")
