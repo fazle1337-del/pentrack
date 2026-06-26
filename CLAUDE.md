@@ -23,15 +23,40 @@ RBAC enforces this split. Runs on a self-hosted Umbrel instance (Raspberry Pi 5)
 4. ✅ BAU planning module (BAU schedule + shared reference key + scopes-as-forms)
 5. ✅ Entra ID / OIDC SSO — live in prod (release 0.4.1)
 6. ✅ Admin delete + cross-entity navigation — live in prod (release 0.5.0)
-7. Dashboard ← **next up**
-8. Azure portability
-9. Security hardening — see "Security audit" below (issues #5–#9)
-10. EasyVista (ITSM) two-way integration — **planning** (scaffold landed on
+7. ✅ Runtime-configurable OIDC connection from the admin UI — release 0.6.0
+   (issue #11 / PR #12). See "Runtime SSO config" below.
+8. Dashboard ← **next up**
+9. Azure portability
+10. Security hardening — see "Security audit" below (issues #5–#9)
+11. EasyVista (ITSM) two-way integration — **planning** (scaffold landed on
     branch `easyvista-integration`, behind `easyvista_enabled`). See
     "EasyVista integration" below.
 
-**Current release: `0.5.0`** (images + Umbrel store). SSO is live on the
+**Current release: `0.6.0`** (images + Umbrel store). SSO is live on the
 production instance `https://cheeseslice.duckdns.org`.
+
+## Runtime SSO config (0.6.0) — issue #11
+
+The OIDC/Entra connection (authority, client id, redirect, scopes, groups claim,
+enable toggle, **and** the client secret) is editable from the admin **Access**
+tab — no redeploy, no host-side secret file. Onboarding a tenant is now an admin
+action, not an engineer task.
+
+- **Resolver:** `core/oidc_config.get_oidc_config(db)` is the single source of
+  truth — DB-over-env **per field**. Empty `oidc_settings` table == legacy
+  env-only behaviour, so prod (which still sets `OIDC_*` env + the secret file in
+  the `Tony-Umbrel` compose) keeps working unchanged until an admin overrides it.
+- **Secret at rest:** stored encrypted in `oidc_settings.client_secret_enc`
+  (Fernet, key derived from `jwt_secret` = `APP_SEED`; `core/crypto.py`).
+  **Write-only** API (`GET/PUT /oidc-config`, admin-only): the GET returns only
+  `client_secret_set`. ⚠️ Rotating `APP_SEED` makes the stored secret
+  undecryptable → re-enter it in the Access tab (it also invalidates all
+  sessions, so it's already a deliberate event).
+- **No import-time snapshot:** `core/oidc.py` takes the resolved `OidcConfig` per
+  request; discovery/JWKS caches keyed by authority; `reset_caches()` is called on
+  save so the next login uses new config without a restart.
+- Wiki: *"SSO setup — admin guide"* and *"SSO runtime config — technical
+  reference"*.
 
 ## Security audit (2026-06-25) — open items
 
