@@ -8,11 +8,8 @@ silently create a privilege-less account.
 
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
 from app.models.enums import AuthType, Role
 from app.models.models import IdpRoleMap, User
-
-settings = get_settings()
 
 # Higher number = more privilege. Keep in sync with the Role enum.
 _ROLE_RANK = {Role.member: 1, Role.admin: 2}
@@ -27,14 +24,14 @@ class LocalAccountConflict(Exception):
     it over. Raised so the break-glass credentials stay purely local."""
 
 
-def _extract_groups(claims: dict) -> list[str]:
-    groups = claims.get(settings.oidc_groups_claim) or []
+def _extract_groups(claims: dict, groups_claim: str) -> list[str]:
+    groups = claims.get(groups_claim) or []
     if isinstance(groups, str):
         groups = [groups]
     return [str(g) for g in groups]
 
 
-def resolve_and_provision(db: Session, claims: dict) -> User:
+def resolve_and_provision(db: Session, claims: dict, groups_claim: str) -> User:
     """Map claims -> role and upsert the local user. Raises NoRoleMapped if the
     user has no group that grants a role."""
     email = (claims.get("email") or claims.get("preferred_username") or "").strip().lower()
@@ -42,7 +39,7 @@ def resolve_and_provision(db: Session, claims: dict) -> User:
         raise ValueError("Token has no email/preferred_username claim")
     name = claims.get("name") or email
 
-    groups = _extract_groups(claims)
+    groups = _extract_groups(claims, groups_claim)
     matches = (
         db.query(IdpRoleMap).filter(IdpRoleMap.idp_group_id.in_(groups)).all()
         if groups

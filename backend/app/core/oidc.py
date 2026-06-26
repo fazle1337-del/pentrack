@@ -2,9 +2,15 @@
 
 Talks the standard OpenID Connect contract (discovery + JWKS + auth-code), so
 the same code works against Entra ID in production and Keycloak (or any OIDC
-provider) in the home lab — only ``oidc_authority`` changes. The flow ends by
+provider) in the home lab — only the authority changes. The flow ends by
 handing validated claims back to the caller, which provisions a local user and
 issues the app's own JWT; Entra tokens never reach the rest of the API.
+
+The connection config (authority/client/secret/...) is resolved per-request from
+``OidcConfig`` (DB-backed, runtime-editable — issue #11) and passed in, so there
+is no import-time snapshot: changing the config in the admin UI takes effect on
+the next login without a restart. The discovery/JWKS caches are keyed by
+authority and can be cleared via :func:`reset_caches` when config is saved.
 
 State/nonce are carried statelessly: the nonce is signed into a short-lived JWT
 (``create_state_token``) using the app secret and round-tripped as the OAuth
@@ -20,44 +26,51 @@ import jwt
 from jwt import PyJWKClient
 
 from app.core.config import get_settings
+from app.core.oidc_config import OidcConfig
 
-settings = get_settings()
+settings = get_settings()  # only for jwt_secret/algorithm (state token) — not OIDC
 
 
 class OIDCError(Exception):
     """Raised on any discovery / token-exchange / validation failure."""
 
 
-_discovery_cache: dict | None = None
-_discovery_fetched_at: float = 0.0
 _DISCOVERY_TTL = 3600  # seconds
-_jwk_client: PyJWKClient | None = None
-_jwk_client_uri: str | None = None
+# Caches keyed by authority so a reconfigured tenant never serves stale metadata.
+_discovery_cache: dict[str, tuple[float, dict]] = {}
+_jwk_clients: dict[str, PyJWKClient] = {}
 
 
-def _discovery() -> dict:
+def reset_caches() -> None:
+    """Drop cached discovery docs and JWKS clients. Call after the OIDC config
+    changes so the next login refetches against the new authority."""
+    _discovery_cache.clear()
+    _jwk_clients.clear()
+
+
+def _discovery(authority: str) -> dict:
     """Fetch and cache the provider's OpenID configuration document."""
-    global _discovery_cache, _discovery_fetched_at
-    if _discovery_cache and (time.time() - _discovery_fetched_at) < _DISCOVERY_TTL:
-        return _discovery_cache
-    if not settings.oidc_authority:
+    if not authority:
         raise OIDCError("OIDC authority is not configured")
-    url = settings.oidc_authority.rstrip("/") + "/.well-known/openid-configuration"
+    cached = _discovery_cache.get(authority)
+    if cached and (time.time() - cached[0]) < _DISCOVERY_TTL:
+        return cached[1]
+    url = authority.rstrip("/") + "/.well-known/openid-configuration"
     resp = httpx.get(url, timeout=10)
     resp.raise_for_status()
-    _discovery_cache = resp.json()
-    _discovery_fetched_at = time.time()
-    return _discovery_cache
+    doc = resp.json()
+    _discovery_cache[authority] = (time.time(), doc)
+    return doc
 
 
-def _jwks() -> PyJWKClient:
+def _jwks(authority: str) -> PyJWKClient:
     """Cache a PyJWKClient bound to the provider's current jwks_uri."""
-    global _jwk_client, _jwk_client_uri
-    uri = _discovery()["jwks_uri"]
-    if _jwk_client is None or _jwk_client_uri != uri:
-        _jwk_client = PyJWKClient(uri)
-        _jwk_client_uri = uri
-    return _jwk_client
+    uri = _discovery(authority)["jwks_uri"]
+    client = _jwk_clients.get(uri)
+    if client is None:
+        client = PyJWKClient(uri)
+        _jwk_clients[uri] = client
+    return client
 
 
 def create_state_token(nonce: str) -> str:
@@ -80,14 +93,14 @@ def read_state_token(state: str) -> str:
     return payload["nonce"]
 
 
-def build_authorization_url(state: str, nonce: str) -> str:
+def build_authorization_url(cfg: OidcConfig, state: str, nonce: str) -> str:
     """Build the provider /authorize redirect URL for the auth-code flow."""
-    disc = _discovery()
+    disc = _discovery(cfg.authority)
     params = {
-        "client_id": settings.oidc_client_id,
+        "client_id": cfg.client_id,
         "response_type": "code",
-        "redirect_uri": settings.oidc_redirect_uri,
-        "scope": settings.oidc_scopes,
+        "redirect_uri": cfg.redirect_uri,
+        "scope": cfg.scopes,
         "state": state,
         "nonce": nonce,
         "response_mode": "query",
@@ -95,15 +108,15 @@ def build_authorization_url(state: str, nonce: str) -> str:
     return disc["authorization_endpoint"] + "?" + urlencode(params)
 
 
-def exchange_code(code: str) -> dict:
+def exchange_code(cfg: OidcConfig, code: str) -> dict:
     """Exchange an authorization code for tokens at the provider's token endpoint."""
-    disc = _discovery()
+    disc = _discovery(cfg.authority)
     data = {
         "grant_type": "authorization_code",
         "code": code,
-        "redirect_uri": settings.oidc_redirect_uri,
-        "client_id": settings.oidc_client_id,
-        "client_secret": settings.oidc_client_secret,
+        "redirect_uri": cfg.redirect_uri,
+        "client_id": cfg.client_id,
+        "client_secret": cfg.client_secret,
     }
     resp = httpx.post(disc["token_endpoint"], data=data, timeout=10)
     if resp.status_code != 200:
@@ -111,16 +124,16 @@ def exchange_code(code: str) -> dict:
     return resp.json()
 
 
-def validate_id_token(id_token: str, nonce: str) -> dict:
+def validate_id_token(cfg: OidcConfig, id_token: str, nonce: str) -> dict:
     """Verify the id_token signature/issuer/audience and bind the nonce."""
-    disc = _discovery()
-    signing_key = _jwks().get_signing_key_from_jwt(id_token).key
+    disc = _discovery(cfg.authority)
+    signing_key = _jwks(cfg.authority).get_signing_key_from_jwt(id_token).key
     try:
         claims = jwt.decode(
             id_token,
             signing_key,
             algorithms=["RS256"],
-            audience=settings.oidc_client_id,
+            audience=cfg.client_id,
             issuer=disc["issuer"],
             options={"require": ["exp", "iat", "iss", "aud"]},
         )

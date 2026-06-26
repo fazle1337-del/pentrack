@@ -67,6 +67,36 @@ class IdpRoleMap(Base):
     team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
 
 
+class OidcSettings(Base):
+    """Single-row, runtime-editable OIDC/Entra connection config (issue #11).
+
+    Lets an admin point the app at an Entra tenant from the UI instead of editing
+    compose env + bind-mounting a secret file + recreating the container. There
+    is at most **one** row (``id == 1``). Any column left NULL/blank falls back
+    to the corresponding env var, so an empty table == current env-only behaviour
+    and existing deployments are unaffected until reconfigured. Resolution lives
+    in ``app/core/oidc_config.py``.
+
+    The client secret is stored **encrypted at rest** (``client_secret_enc``,
+    a Fernet token via ``app/core/crypto.py``) and is never returned to clients.
+    """
+
+    __tablename__ = "oidc_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)  # always 1
+    enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    authority: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    client_id: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    client_secret_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    redirect_uri: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    scopes: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    groups_claim: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    post_login_redirect: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), onupdate=func.now(), server_default=func.now()
+    )
+
+
 class Test(Base):
     __tablename__ = "tests"
 
