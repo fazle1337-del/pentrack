@@ -16,6 +16,7 @@ from app.routers import (
     idp_maps,
     imports,
     itsm,
+    oidc_config,
     related,
     scopes,
     teams_users,
@@ -167,6 +168,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(idp_maps.router)
+app.include_router(oidc_config.router)
 app.include_router(teams_users.router)
 app.include_router(tests.router)
 app.include_router(findings.router)

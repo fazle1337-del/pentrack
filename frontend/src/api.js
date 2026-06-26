@@ -76,6 +76,11 @@ export const api = {
   listIdpRoleMaps: () => request("/idp-role-maps"),
   createIdpRoleMap: (body) => request("/idp-role-maps", { method: "POST", body }),
   deleteIdpRoleMap: (id) => request(`/idp-role-maps/${id}`, { method: "DELETE" }),
+  // SSO connection config (admin-only). The secret is write-only: the GET never
+  // returns it (only client_secret_set), and the PUT only changes it when a
+  // non-empty client_secret is sent.
+  getOidcConfig: () => request("/oidc-config"),
+  updateOidcConfig: (body) => request("/oidc-config", { method: "PUT", body }),
   async login(email, password) {
     const form = new URLSearchParams();
     form.set("username", email);

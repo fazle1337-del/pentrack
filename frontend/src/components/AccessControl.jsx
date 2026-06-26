@@ -1,6 +1,136 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 
+// Admin-only panel: configure the OIDC/Entra connection at runtime (issue #11),
+// so onboarding a tenant needs no redeploy or host-side secret file. The client
+// secret is write-only — the API returns only whether one is set, and we send a
+// new secret only when the admin actually types one (blank leaves it unchanged).
+const CONNECTION_FIELDS = [
+  ["authority", "Authority (issuer)", "https://login.microsoftonline.com/<tenant-id>/v2.0"],
+  ["client_id", "Client ID", "application (client) ID"],
+  ["redirect_uri", "Redirect URI", "https://pentrack.example.com/api/auth/sso/callback"],
+  ["scopes", "Scopes", "openid profile email"],
+  ["groups_claim", "Groups claim", "groups"],
+  ["post_login_redirect", "Post-login redirect", "/"],
+];
+
+function SsoConnection() {
+  const [cfg, setCfg] = useState(null);
+  const [secret, setSecret] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      setCfg(await api.getOidcConfig());
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+  useEffect(() => {
+    load();
+  }, []);
+
+  function set(k, v) {
+    setCfg((c) => ({ ...c, [k]: v }));
+    setSaved(false);
+  }
+
+  async function save() {
+    setBusy(true);
+    setError("");
+    setSaved(false);
+    try {
+      const body = {
+        enabled: cfg.enabled,
+        authority: cfg.authority,
+        client_id: cfg.client_id,
+        redirect_uri: cfg.redirect_uri,
+        scopes: cfg.scopes,
+        groups_claim: cfg.groups_claim,
+        post_login_redirect: cfg.post_login_redirect,
+      };
+      if (secret) body.client_secret = secret; // only send when actually changed
+      const next = await api.updateOidcConfig(body);
+      setCfg(next);
+      setSecret("");
+      setSaved(true);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (loading) return <div className="loading">Loading SSO connection…</div>;
+  if (!cfg) return error ? <p className="err">{error}</p> : null;
+
+  return (
+    <div style={{ maxWidth: 760, marginBottom: 28 }}>
+      <h2 style={{ fontSize: 16, margin: "4px 0 2px" }}>SSO connection</h2>
+      <p className="muted" style={{ fontSize: 13, margin: "0 0 16px" }}>
+        Point the app at your OIDC/Entra tenant. Changes take effect on the next
+        sign-in — no redeploy. Local (break-glass) login always works, so a bad
+        config can be fixed here.
+      </p>
+
+      <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+        <input
+          type="checkbox"
+          checked={!!cfg.enabled}
+          onChange={(e) => set("enabled", e.target.checked)}
+        />
+        <span>SSO enabled</span>
+      </label>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+        {CONNECTION_FIELDS.map(([key, label, ph]) => (
+          <div key={key} style={{ flex: "1 1 340px" }}>
+            <label>{label}</label>
+            <input
+              className="in"
+              value={cfg[key] || ""}
+              placeholder={ph}
+              onChange={(e) => set(key, e.target.value)}
+            />
+          </div>
+        ))}
+        <div style={{ flex: "1 1 340px" }}>
+          <label>
+            Client secret{" "}
+            {cfg.client_secret_set && <span className="muted">(configured)</span>}
+          </label>
+          <input
+            className="in"
+            type="password"
+            value={secret}
+            placeholder={cfg.client_secret_set ? "•••••• — leave blank to keep" : "enter client secret"}
+            onChange={(e) => {
+              setSecret(e.target.value);
+              setSaved(false);
+            }}
+          />
+        </div>
+      </div>
+
+      {error && <p className="err">{error}</p>}
+
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 14 }}>
+        <button className="btn" disabled={busy} onClick={save}>
+          {busy ? "Saving…" : "Save connection"}
+        </button>
+        {saved && <span className="muted" style={{ fontSize: 13 }}>Saved ✓</span>}
+      </div>
+    </div>
+  );
+}
+
 // Admin-only tab: manage how identity-provider groups map to app roles.
 // idp_group_id is the raw groups-claim value — a group path in Keycloak
 // (e.g. /pentrack-admins) or an object-ID GUID in Entra.
@@ -67,6 +197,8 @@ export default function AccessControl({ teams }) {
 
   return (
     <div className="section-pad" style={{ maxWidth: 760 }}>
+      <SsoConnection />
+
       <h2 style={{ fontSize: 16, margin: "4px 0 2px" }}>SSO access control</h2>
       <p className="muted" style={{ fontSize: 13, margin: "0 0 16px" }}>
         Map identity-provider groups to roles. At SSO sign-in a user's groups are
