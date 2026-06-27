@@ -25,14 +25,17 @@ RBAC enforces this split. Runs on a self-hosted Umbrel instance (Raspberry Pi 5)
 6. ✅ Admin delete + cross-entity navigation — live in prod (release 0.5.0)
 7. ✅ Runtime-configurable OIDC connection from the admin UI — release 0.6.0
    (issue #11 / PR #12). See "Runtime SSO config" below.
-8. Dashboard ← **next up**
-9. Azure portability
-10. Security hardening — see "Security audit" below (issues #5–#9)
-11. EasyVista (ITSM) two-way integration — **planning** (scaffold landed on
+8. ✅ Security hardening — release 0.7.0 (issues #5–#9). See "Security audit"
+   below for what shipped.
+9. ✅ Teams admin UI (create / rename / delete) — release 0.7.0 (issue #13 /
+   PR #17). See "Teams admin UI" below.
+10. Dashboard ← **next up**
+11. Azure portability
+12. EasyVista (ITSM) two-way integration — **planning** (scaffold landed on
     branch `easyvista-integration`, behind `easyvista_enabled`). See
     "EasyVista integration" below.
 
-**Current release: `0.6.0`** (images + Umbrel store). SSO is live on the
+**Current release: `0.7.0`** (images + Umbrel store). SSO is live on the
 production instance `https://cheeseslice.duckdns.org`.
 
 ## Runtime SSO config (0.6.0) — issue #11
@@ -58,31 +61,45 @@ action, not an engineer task.
 - Wiki: *"SSO setup — admin guide"* and *"SSO runtime config — technical
   reference"*.
 
-## Security audit (2026-06-25) — open items
+## Security audit (2026-06-25) — RESOLVED in 0.7.0
 
 Full application audit done (static review + live DAST against the running
 Umbrel deployment). Report: `../Security Audit Reports/pentrack-2026-06-25-full-application-audit.md`
 (sibling repo `Gitea/Security Audit Reports`). Verdict: **authz & injection
 defense are strong** (no SQLi/XSS, RBAC enforced consistently, JWT in memory,
-OIDC validated correctly, no mass-assignment); gaps are in session management
-and hardening. Open Gitea issues:
+OIDC validated correctly, no mass-assignment); gaps were in session management
+and hardening. All five issues (#5–#9) shipped in **0.7.0** (PRs #14–#17):
 
-- **#5 (HIGH)** No token invalidation — logout is client-side only; 8h JWT, no
-  `/auth/logout`, no denylist/`token_version`. Disabled accounts stay valid till
-  expiry. Fix: `token_version` claim+column checked in `get_current_user`,
-  bump on logout/password-change; add `/auth/logout`; consider shorter TTL +
-  refresh.
-- **#6 (MED)** No login rate-limiting (12 rapid fails → all 401, no lockout).
-- **#7 (MED)** CORS `allow_origins=["*"]` + `allow_credentials=True` (`main.py:159`).
-- **#8 (MED)** No security headers (CSP/X-Frame-Options/HSTS/nosniff) in `frontend/nginx.conf`.
-- **#9 (MED)** `/api/docs` + `/api/openapi.json` public (disable in prod via
-  `FastAPI(docs_url=None, redoc_url=None, openapi_url=None)`).
+- **#5 (HIGH)** Token invalidation — `User.token_version` column + `tv` JWT claim
+  checked in `core/deps.get_current_user`; `POST /auth/logout` bumps it (invalidates
+  every prior token incl. the caller's). Frontend `logout()` calls it. Legacy/NULL
+  values treated as 0 so existing sessions survive deploy. (PR #15)
+- **#6 (MED)** Login rate-limiting — `slowapi` in-process limiter (`core/ratelimit.py`,
+  no Redis), keyed on the left-most `X-Forwarded-For`; `/auth/login` → `LOGIN_RATE_LIMIT`
+  (default `10/minute`), `LOGIN_RATE_LIMIT_ENABLED` toggle. (PR #16)
+- **#7 (MED)** CORS — env-driven `CORS_ALLOW_ORIGINS` (default empty = none) and
+  `allow_credentials=False` in `main.py`. (PR #14)
+- **#8 (MED)** Security headers — `X-Frame-Options`, `nosniff`, `Referrer-Policy`,
+  restrictive CSP in `frontend/nginx.conf` (HSTS left to the TLS edge). (PR #14)
+- **#9 (MED)** API docs — `docs_url`/`redoc_url`/`openapi_url` gated behind
+  `API_DOCS_ENABLED` (default `false`), so `/api/docs` is now 404 in prod. (PR #14)
 
-**Pick-up plan:** #7+#8+#9 are small config changes → one branch+PR (quick wins).
-#5 and #6 are larger (schema/middleware) → separate PRs. Deployment secrets were
-verified overridden from the weak `config.py` defaults, so prod is not exposed by
-those defaults. Live DAST is reproducible from the Umbrel host against
+**New env knobs (all safe defaults, no compose change required):**
+`CORS_ALLOW_ORIGINS`, `API_DOCS_ENABLED`, `LOGIN_RATE_LIMIT`,
+`LOGIN_RATE_LIMIT_ENABLED`. The backend image gained the `slowapi` dependency
+(rebuild on deploy). Live DAST is reproducible from the Umbrel host against
 `http://127.0.0.1:8099`.
+
+## Teams admin UI (0.7.0) — issue #13
+
+Teams (finding owner + IdP-group→role target) had no management UI — created only
+via API/CSV, a dead end for admins. 0.7.0 adds `PATCH /teams/{id}` (rename, 409 on
+dup) and `DELETE /teams/{id}` (admin), with delete **blocked (409 + reference
+counts)** while a team is referenced by findings / users / `idp_role_maps` (no FK
+cascade; nulling would lose ownership). Frontend: `createTeam`/`updateTeam`/
+`deleteTeam` in `api.js` + a **Teams** manager in the admin **Access** tab
+(`AccessControl.jsx`); `App.jsx` passes `onTeamsChanged` so the finding owner
+picker and the Access-tab team dropdown refresh live. (PR #17)
 
 ### 0.5.0 — admin delete + cross-entity navigation (done, tested in prod)
 
