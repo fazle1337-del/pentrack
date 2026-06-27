@@ -131,10 +131,126 @@ function SsoConnection() {
   );
 }
 
+// Admin-only: create / rename / delete Teams (issue #13). Teams back the finding
+// owner picker and the group→role mapping below, but had no UI — they could only
+// be made via the API or CSV import. onTeamsChanged refreshes the app-wide teams
+// list so those dropdowns update immediately.
+function TeamsManager({ teams, onTeamsChanged }) {
+  const [name, setName] = useState("");
+  const [editing, setEditing] = useState(null); // { id, name }
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function run(fn) {
+    setBusy(true);
+    setError("");
+    try {
+      await fn();
+      await onTeamsChanged();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function add() {
+    const n = name.trim();
+    if (!n) {
+      setError("Team name is required");
+      return;
+    }
+    await run(async () => {
+      await api.createTeam(n);
+      setName("");
+    });
+  }
+
+  async function saveEdit() {
+    const n = editing.name.trim();
+    if (!n) {
+      setError("Team name is required");
+      return;
+    }
+    await run(async () => {
+      await api.updateTeam(editing.id, n);
+      setEditing(null);
+    });
+  }
+
+  async function remove(team) {
+    if (!window.confirm(`Delete team "${team.name}"?`)) return;
+    await run(() => api.deleteTeam(team.id));
+  }
+
+  return (
+    <div style={{ maxWidth: 760, marginBottom: 28 }}>
+      <h2 style={{ fontSize: 16, margin: "4px 0 2px" }}>Teams</h2>
+      <p className="muted" style={{ fontSize: 13, margin: "0 0 16px" }}>
+        Teams can own findings and be the target of a group → role mapping. A team
+        that's still referenced can't be deleted until those references are
+        reassigned.
+      </p>
+
+      <div className="field" style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+        <div style={{ flex: "2 1 240px" }}>
+          <label>New team name</label>
+          <input
+            className="in"
+            value={name}
+            placeholder="e.g. Payments Engineering"
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && add()}
+          />
+        </div>
+        <button className="btn" disabled={busy} onClick={add}>
+          {busy ? "Saving…" : "Add team"}
+        </button>
+      </div>
+
+      {error && <p className="err">{error}</p>}
+
+      {teams.length === 0 ? (
+        <div className="empty">No teams yet. Add one so findings and group mappings can target it.</div>
+      ) : (
+        <div className="maptable">
+          {teams.map((t) => (
+            <div className="maprow" key={t.id}>
+              {editing?.id === t.id ? (
+                <>
+                  <input
+                    className="in"
+                    style={{ flex: "1 1 auto" }}
+                    value={editing.name}
+                    autoFocus
+                    onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") saveEdit();
+                      if (e.key === "Escape") setEditing(null);
+                    }}
+                  />
+                  <button className="btn" disabled={busy} onClick={saveEdit}>Save</button>
+                  <button className="att-remove" title="Cancel" onClick={() => setEditing(null)}>×</button>
+                </>
+              ) : (
+                <>
+                  <div className="mapcol-name" style={{ flex: "1 1 auto" }}>{t.name}</div>
+                  <button className="btn ghost" onClick={() => setEditing({ id: t.id, name: t.name })}>Rename</button>
+                  <button className="att-remove" title="Delete team" onClick={() => remove(t)}>×</button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Admin-only tab: manage how identity-provider groups map to app roles.
 // idp_group_id is the raw groups-claim value — a group path in Keycloak
 // (e.g. /pentrack-admins) or an object-ID GUID in Entra.
-export default function AccessControl({ teams }) {
+export default function AccessControl({ teams, onTeamsChanged }) {
   const [maps, setMaps] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -198,6 +314,8 @@ export default function AccessControl({ teams }) {
   return (
     <div className="section-pad" style={{ maxWidth: 760 }}>
       <SsoConnection />
+
+      <TeamsManager teams={teams} onTeamsChanged={onTeamsChanged} />
 
       <h2 style={{ fontSize: 16, margin: "4px 0 2px" }}>SSO access control</h2>
       <p className="muted" style={{ fontSize: 13, margin: "0 0 16px" }}>

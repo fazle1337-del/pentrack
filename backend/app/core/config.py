@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 480
 
+    # Login rate limiting (issue #6): throttle /auth/login per client IP to blunt
+    # online brute-force / credential stuffing. In-process fixed-window counter
+    # (slowapi) — no Redis, so it fits the single-instance Umbrel deployment.
+    login_rate_limit_enabled: bool = True
+    login_rate_limit: str = "10/minute"
+
     # Seed admin (created on startup if no users exist)
     seed_admin_email: str = "admin@example.com"
     seed_admin_password: str = "changeme"

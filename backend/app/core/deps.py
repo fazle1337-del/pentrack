@@ -18,11 +18,15 @@ def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    subject = decode_access_token(token)
-    if subject is None:
+    payload = decode_access_token(token)
+    if payload is None or payload.get("sub") is None:
         raise credentials_exc
-    user = db.query(User).filter(User.id == int(subject)).first()
+    user = db.query(User).filter(User.id == int(payload["sub"])).first()
     if user is None or not user.is_active:
+        raise credentials_exc
+    # Reject tokens issued before the user's current token_version (issue #5).
+    # NULL/legacy values are treated as 0 on both sides.
+    if int(payload.get("tv") or 0) != int(user.token_version or 0):
         raise credentials_exc
     return user
 

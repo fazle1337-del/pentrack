@@ -48,11 +48,21 @@ export default function App() {
     } catch {}
   }
 
+  async function reloadTeams() {
+    try {
+      setTeams(await api.listTeams());
+    } catch {}
+  }
+
   useEffect(() => {
     if (authed) loadRefs();
   }, [authed]);
 
-  function logout() {
+  async function logout() {
+    // Best-effort server-side revocation; clear local state regardless.
+    try {
+      await api.logout();
+    } catch {}
     setToken(null);
     setAuthed(false);
     setMe(null);
@@ -129,7 +139,9 @@ export default function App() {
           onNavConsumed={() => setNav(null)}
         />
       )}
-      {tab === "Access" && isAdmin && <AccessControl teams={teams} />}
+      {tab === "Access" && isAdmin && (
+        <AccessControl teams={teams} onTeamsChanged={reloadTeams} />
+      )}
     </>
   );
 }
