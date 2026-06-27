@@ -138,6 +138,9 @@ export const api = {
   },
   // Teams / users
   listTeams: () => request("/teams"),
+  createTeam: (name) => request("/teams", { method: "POST", body: { name } }),
+  updateTeam: (id, name) => request(`/teams/${id}`, { method: "PATCH", body: { name } }),
+  deleteTeam: (id) => request(`/teams/${id}`, { method: "DELETE" }),
   listUsers: () => request("/users"),
   // Attachments
   listFindingAttachments: (id) => request(`/findings/${id}/attachments`),

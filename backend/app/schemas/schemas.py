@@ -29,6 +29,10 @@ class TeamCreate(BaseModel):
     name: str
 
 
+class TeamUpdate(BaseModel):
+    name: str
+
+
 class TeamOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int

@@ -48,6 +48,12 @@ export default function App() {
     } catch {}
   }
 
+  async function reloadTeams() {
+    try {
+      setTeams(await api.listTeams());
+    } catch {}
+  }
+
   useEffect(() => {
     if (authed) loadRefs();
   }, [authed]);
@@ -133,7 +139,9 @@ export default function App() {
           onNavConsumed={() => setNav(null)}
         />
       )}
-      {tab === "Access" && isAdmin && <AccessControl teams={teams} />}
+      {tab === "Access" && isAdmin && (
+        <AccessControl teams={teams} onTeamsChanged={reloadTeams} />
+      )}
     </>
   );
 }
