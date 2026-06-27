@@ -89,6 +89,8 @@ export const api = {
     setToken(data.access_token);
     return data;
   },
+  // Server-side logout: invalidates the current token (bumps token_version).
+  logout: () => request("/auth/logout", { method: "POST" }),
   // Tests
   listTests: () => request("/tests"),
   getTest: (id) => request(`/tests/${id}`),

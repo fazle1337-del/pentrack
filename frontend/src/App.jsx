@@ -52,7 +52,11 @@ export default function App() {
     if (authed) loadRefs();
   }, [authed]);
 
-  function logout() {
+  async function logout() {
+    // Best-effort server-side revocation; clear local state regardless.
+    try {
+      await api.logout();
+    } catch {}
     setToken(null);
     setAuthed(false);
     setMe(null);

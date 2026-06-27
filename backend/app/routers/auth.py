@@ -1,6 +1,6 @@
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -44,13 +44,23 @@ def login(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Account disabled"
         )
-    return Token(access_token=create_access_token(str(user.id)))
+    return Token(access_token=create_access_token(str(user.id), user.token_version or 0))
 
 
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(get_current_user)):
     """Current user — the frontend uses this to gate admin-only UI."""
     return user
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Server-side logout (issue #5): bump the user's token_version so every JWT
+    issued so far — including this one — stops validating immediately."""
+    user.token_version = (user.token_version or 0) + 1
+    db.add(user)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/config")
@@ -101,4 +111,7 @@ def sso_callback(
     except Exception:
         # Don't leak provider/validation internals to the browser.
         return _sso_redirect(cfg.post_login_redirect, "sso_error=login_failed")
-    return _sso_redirect(cfg.post_login_redirect, f"sso_token={create_access_token(str(user.id))}")
+    return _sso_redirect(
+        cfg.post_login_redirect,
+        f"sso_token={create_access_token(str(user.id), user.token_version or 0)}",
+    )

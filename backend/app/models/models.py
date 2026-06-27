@@ -45,6 +45,14 @@ class User(Base):
     role: Mapped[Role] = mapped_column(SAEnum(Role), default=Role.member)
     team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Bumped on logout / forced sign-out to invalidate every previously issued
+    # JWT (issue #5). Tokens carry a "tv" claim that get_current_user compares
+    # against this; a mismatch rejects the token. server_default keeps fresh DBs
+    # at 0 — existing rows added by the additive migration read NULL and are
+    # treated as 0 in code.
+    token_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
 
     team: Mapped["Team | None"] = relationship(back_populates="users")
 
