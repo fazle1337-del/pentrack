@@ -1,14 +1,16 @@
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.core import oidc
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.core.oidc_config import get_oidc_config
+from app.core.ratelimit import limiter
 from app.core.security import create_access_token, verify_password
 from app.models.enums import AuthType
 from app.models.models import User
@@ -27,8 +29,11 @@ def _sso_redirect(base: str, suffix: str) -> RedirectResponse:
 
 
 @router.post("/login", response_model=Token)
+@limiter.limit(get_settings().login_rate_limit)
 def login(
-    form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
 ):
     user = db.query(User).filter(User.email == form_data.username).first()
     if (
