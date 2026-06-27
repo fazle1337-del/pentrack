@@ -123,6 +123,20 @@ role is denied; the break-glass local admin is always available to fix mappings.
   status/notes and upload attachments on those findings; cannot edit risk
   fields or reassign; cannot create tests/findings.
 
+## Security hardening
+
+Secure-by-default settings for an internet-facing deployment:
+
+| Env var | Default | Effect |
+| --- | --- | --- |
+| `CORS_ALLOW_ORIGINS` | `""` (none) | Comma-separated browser origins allowed to call the API cross-origin. Empty is correct for the bundled SPA, which is same-origin via the nginx `/api` proxy. Credentials are never allowed (auth is a Bearer header). |
+| `API_DOCS_ENABLED` | `false` | When `false`, `/api/docs`, `/api/redoc` and `/api/openapi.json` are disabled so the API surface isn't disclosed. Set `true` in dev to use Swagger UI. |
+
+The frontend nginx config sets `X-Frame-Options`, `X-Content-Type-Options`,
+`Referrer-Policy` and a restrictive `Content-Security-Policy`. **HSTS** is not set
+there — terminate TLS at an external proxy and set `Strict-Transport-Security`
+on it.
+
 ## Endpoints
 
 - `auth`: `POST /auth/login`

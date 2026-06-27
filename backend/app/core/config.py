@@ -21,6 +21,19 @@ class Settings(BaseSettings):
     login_rate_limit_enabled: bool = True
     login_rate_limit: str = "10/minute"
 
+    # CORS: comma-separated list of allowed browser origins (e.g.
+    # "https://pentrack.example.com"). Empty = no cross-origin access, which is
+    # the right default: the SPA is served same-origin and reaches the API
+    # through the nginx /api proxy, so it needs no CORS at all. Set this only if a
+    # separate-origin client must call the API directly. Credentials are never
+    # allowed (auth is a Bearer header, not cookies).
+    cors_allow_origins: str = ""
+
+    # Interactive API docs (/api/docs, /api/redoc, /api/openapi.json). OFF by
+    # default so the full API surface isn't disclosed on an internet-facing
+    # instance; turn on in dev/local to use Swagger UI.
+    api_docs_enabled: bool = False
+
     # Seed admin (created on startup if no users exist)
     seed_admin_email: str = "admin@example.com"
     seed_admin_password: str = "changeme"

@@ -159,17 +159,33 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="PenTrack API", version="0.1.0", lifespan=lifespan)
+# Disable interactive docs unless explicitly enabled (issue #9): an internet-
+# facing instance shouldn't disclose its full API surface to anonymous callers.
+_docs_kwargs = (
+    {}
+    if settings.api_docs_enabled
+    else {"docs_url": None, "redoc_url": None, "openapi_url": None}
+)
+app = FastAPI(
+    title="PenTrack API", version="0.1.0", lifespan=lifespan, **_docs_kwargs
+)
 
 # Login rate limiting (issue #6). The limiter instance is shared with the
 # decorated route; register it on the app + install the 429 handler.
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# CORS (issue #7): restrict to the configured origin(s) instead of "*", and
+# never allow credentials (the app authenticates with a Bearer header, not
+# cookies). Empty list = no cross-origin access — fine, since the SPA is
+# same-origin via the nginx /api proxy.
+_cors_origins = [
+    o.strip() for o in settings.cors_allow_origins.split(",") if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten for production
-    allow_credentials=True,
+    allow_origins=_cors_origins,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
