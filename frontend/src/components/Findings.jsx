@@ -70,7 +70,7 @@ function exportCsv(rows, testById, teamName, userName) {
   URL.revokeObjectURL(url);
 }
 
-export default function Findings({ teams, users, isAdmin, onNavigate, nav, onNavConsumed }) {
+export default function Findings({ teams, users, isAdmin, me, onNavigate, nav, onNavConsumed }) {
   const [findings, setFindings] = useState([]);
   const [tests, setTests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -377,6 +377,7 @@ export default function Findings({ teams, users, isAdmin, onNavigate, nav, onNav
             testName={testName[selected.test_id]}
             test={testById[selected.test_id]}
             isAdmin={isAdmin}
+            me={me}
             itsmEnabled={itsmEnabled}
             onNavigate={onNavigate}
             onClose={() => setSelected(null)}
@@ -408,7 +409,7 @@ export default function Findings({ teams, users, isAdmin, onNavigate, nav, onNav
   );
 }
 
-function FindingDrawer({ finding, teams, users, testName, test, isAdmin, itsmEnabled, onNavigate, onClose, onSaved, onDeleted, onTestSaved }) {
+function FindingDrawer({ finding, teams, users, testName, test, isAdmin, me, itsmEnabled, onNavigate, onClose, onSaved, onDeleted, onTestSaved }) {
   const [form, setForm] = useState({ ...finding });
   const [testForm, setTestForm] = useState({
     penetration_tester: test?.penetration_tester || "",
@@ -418,6 +419,14 @@ function FindingDrawer({ finding, teams, users, testName, test, isAdmin, itsmEna
   const [err, setErr] = useState("");
   const [itsmBusy, setItsmBusy] = useState(false);
   const [atts, setAtts] = useState([]);
+  // Comments (Phase B) are visible to admins + the owning team, unlike the
+  // push/refresh-status controls above which stay admin-only.
+  const canSeeComments =
+    isAdmin ||
+    (me?.team_id != null && me.team_id === finding.remediation_owner_team_id);
+  const [comments, setComments] = useState([]);
+  const [commentsLoaded, setCommentsLoaded] = useState(false);
+  const [commentsBusy, setCommentsBusy] = useState(false);
   const ownerKey =
     finding.remediation_owner_user_id != null
       ? `u:${finding.remediation_owner_user_id}`
@@ -429,6 +438,15 @@ function FindingDrawer({ finding, teams, users, testName, test, isAdmin, itsmEna
   useEffect(() => {
     api.listFindingAttachments(finding.id).then(setAtts).catch(() => {});
   }, [finding.id]);
+
+  useEffect(() => {
+    if (!itsmEnabled || !finding.itsm_reference || !canSeeComments) return;
+    api
+      .getFindingItsmComments(finding.id)
+      .then(setComments)
+      .catch(() => {})
+      .finally(() => setCommentsLoaded(true));
+  }, [finding.id, itsmEnabled, finding.itsm_reference, canSeeComments]);
 
   function set(k, v) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -540,6 +558,19 @@ function FindingDrawer({ finding, teams, users, testName, test, isAdmin, itsmEna
       setErr(e.message);
     } finally {
       setItsmBusy(false);
+    }
+  }
+
+  async function syncComments() {
+    setCommentsBusy(true);
+    setErr("");
+    try {
+      setComments(await api.syncFindingItsmComments(finding.id));
+      setCommentsLoaded(true);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setCommentsBusy(false);
     }
   }
 
@@ -724,6 +755,37 @@ function FindingDrawer({ finding, teams, users, testName, test, isAdmin, itsmEna
               <button className="btn ghost" disabled={itsmBusy} onClick={pushToItsm}>
                 {itsmBusy ? "Pushing…" : "Push to EasyVista"}
               </button>
+            )}
+          </div>
+        )}
+        {itsmEnabled && form.itsm_reference && canSeeComments && (
+          <div className="field">
+            <label>EasyVista comments</label>
+            <button className="btn ghost" disabled={commentsBusy} onClick={syncComments}>
+              {commentsBusy ? "Syncing…" : "Sync comments"}
+            </button>
+            {comments.length === 0 ? (
+              <p className="muted" style={{ fontSize: 13, marginTop: 6 }}>
+                {commentsLoaded ? "No comments yet." : "Loading…"}
+              </p>
+            ) : (
+              <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+                {comments.map((c) => (
+                  <div key={c.id} className="att" style={{ display: "block" }}>
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      {c.author || "Unknown"}
+                      {c.action_type ? ` · ${c.action_type}` : ""}
+                      {c.posted_at ? ` · ${new Date(c.posted_at).toLocaleString()}` : ""}
+                      {c.closed && (
+                        <span className="badge" style={{ marginLeft: 6 }}>
+                          Closed
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{c.body}</div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )}

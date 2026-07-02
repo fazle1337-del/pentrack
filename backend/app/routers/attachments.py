@@ -3,7 +3,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import can_access_finding, get_current_user
 from app.models.enums import Role
 from app.models.models import (
     Finding,
@@ -14,7 +14,6 @@ from app.models.models import (
     TestAttachment,
     User,
 )
-from app.routers.findings import _can_access
 from app.schemas.schemas import AttachmentOut
 from app.services.storage import storage
 
@@ -84,7 +83,7 @@ async def upload_finding_attachment(
     finding = db.get(Finding, finding_id)
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
-    if not _can_access(user, finding):
+    if not can_access_finding(user, finding):
         raise HTTPException(status_code=403, detail="Not authorised for this finding")
     data = await file.read()
     storage_path = storage.save(file.filename or "upload", data)
@@ -109,7 +108,7 @@ def list_finding_attachments(
     finding = db.get(Finding, finding_id)
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
-    if not _can_access(user, finding):
+    if not can_access_finding(user, finding):
         raise HTTPException(status_code=403, detail="Not authorised for this finding")
     return (
         db.query(FindingAttachment)
@@ -128,7 +127,7 @@ def download_finding_attachment(
     if not att:
         raise HTTPException(status_code=404, detail="Attachment not found")
     finding = db.get(Finding, att.finding_id)
-    if not _can_access(user, finding):
+    if not can_access_finding(user, finding):
         raise HTTPException(status_code=403, detail="Not authorised for this finding")
     path = storage.full_path(att.storage_path)
     if not path.exists():
@@ -146,7 +145,7 @@ def delete_finding_attachment(
     if not att:
         raise HTTPException(status_code=404, detail="Attachment not found")
     finding = db.get(Finding, att.finding_id)
-    if not _can_access(user, finding):
+    if not can_access_finding(user, finding):
         raise HTTPException(status_code=403, detail="Not authorised for this finding")
     # remove the stored file, then the DB row
     storage.delete(att.storage_path)

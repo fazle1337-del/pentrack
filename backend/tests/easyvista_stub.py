@@ -85,6 +85,31 @@ async def list_employee_groups(account: str, employee_id: str):
     return _json(200, [{"GROUP_ID": "1", "GROUP_EN": "Web Team"}])
 
 
+@app.get("/api/v1/{account}/requests/comment/{rfc_number}")
+async def get_request_comments(account: str, rfc_number: str):
+    if _requests.get(rfc_number) is None:
+        return _json(404, {"error": "not found"})
+    return _json(
+        200,
+        [
+            {
+                "ACTION_ID": "1",
+                "AM_ACTION_TYPE": "Description",
+                "DESCRIPTION": "Original ticket description.",
+                "contact_name": "pentrack",
+                "CREATION_DATE": "2026-07-01T09:00:00Z",
+            },
+            {
+                "ACTION_ID": "2",
+                "AM_ACTION_TYPE": "Note",
+                "DESCRIPTION": "Working on it.",
+                "contact_name": "EV Tech",
+                "CREATION_DATE": "2026-07-02T10:30:00Z",
+            },
+        ],
+    )
+
+
 def _json(status: int, payload):
     from fastapi.responses import JSONResponse
 

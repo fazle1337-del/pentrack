@@ -111,6 +111,7 @@ export default function App() {
           teams={teams}
           users={users}
           isAdmin={isAdmin}
+          me={me}
           onNavigate={navTo}
           nav={nav?.type === "finding" ? nav : null}
           onNavConsumed={() => setNav(null)}

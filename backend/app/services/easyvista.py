@@ -27,6 +27,8 @@ catalog_guid and any risk-rating -> EV urgency/severity ID mapping (tenant-
 specific, deliberately left out rather than guessed).
 """
 
+from datetime import datetime
+
 import httpx
 from sqlalchemy.orm import Session
 
@@ -178,6 +180,62 @@ def get_request_status(
         "status_guid": data.get("STATUS_GUID") or data.get("status_guid"),
         "closed": bool(end_date) if end_date is not None else None,
     }
+
+
+def _parse_datetime(raw) -> datetime | None:
+    """Best-effort ISO-8601 parse; EV's exact date format is unverified
+    against a live tenant, so a value that doesn't parse is dropped (None)
+    rather than raising."""
+    if not raw or not isinstance(raw, str):
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def get_request_comments(
+    rfc_number: str, db: Session | None = None, *, client: httpx.Client | None = None
+) -> list[dict]:
+    """GET /requests/comment/{rfc_number} — the ticket's comment thread.
+
+    A "comment" is an EV **action** of a specific AM_ACTION_TYPE (the ticket
+    description itself is the first comment — wiki "EasyVista integration —
+    open questions", locked decisions). ASSUMPTION, unverified against a live
+    tenant (same caveat as `get_request_status`): field names/casing are
+    guessed from the documented conventions elsewhere in this module; any
+    field that isn't present under a tried key comes back None rather than
+    guessing further. `closed` mirrors the ticket-level convention — action
+    END_DATE_UT being set, not a status/label match.
+
+    Returns a list of dicts: {ev_action_id, author, body, action_type,
+    posted_at, closed}, in the order EV returns them.
+    """
+    data = _get(db, f"/requests/comment/{rfc_number}", client=client)
+    rows = data if isinstance(data, list) else data.get("actions") or data.get("ACTIONS") or []
+
+    comments = []
+    for row in rows:
+        author = (
+            row.get("contact_name")
+            or row.get("CONTACT_NAME")
+            or row.get("contact_email")
+            or row.get("CONTACT_EMAIL")
+        )
+        end_date = row.get("END_DATE_UT") or row.get("end_date_ut") or row.get("END_DATE")
+        comments.append(
+            {
+                "ev_action_id": row.get("ACTION_ID") or row.get("action_id"),
+                "author": author,
+                "body": row.get("DESCRIPTION") or row.get("description") or row.get("COMMENT"),
+                "action_type": row.get("AM_ACTION_TYPE") or row.get("action_type"),
+                "posted_at": _parse_datetime(
+                    row.get("CREATION_DATE") or row.get("creation_date")
+                ),
+                "closed": bool(end_date) if end_date is not None else None,
+            }
+        )
+    return comments
 
 
 def create_request(

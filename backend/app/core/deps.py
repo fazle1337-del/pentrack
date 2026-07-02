@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import decode_access_token
 from app.models.enums import Role
-from app.models.models import User
+from app.models.models import Finding, User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
@@ -37,3 +37,19 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
             status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required"
         )
     return user
+
+
+def can_access_finding(user: User, finding: Finding) -> bool:
+    """Shared finding-visibility rule: admins see everything; a member sees a
+    finding only if they own it directly or via their team. Used by
+    routers/findings.py (the finding CRUD routes) and routers/itsm.py (ITSM
+    status/comments, which follow the same "admins + owning team" visibility
+    per the wiki's locked EasyVista design decisions)."""
+    if user.role == Role.admin:
+        return True
+    if finding.remediation_owner_user_id == user.id:
+        return True
+    return (
+        user.team_id is not None
+        and finding.remediation_owner_team_id == user.team_id
+    )

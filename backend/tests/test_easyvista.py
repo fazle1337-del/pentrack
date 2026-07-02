@@ -14,6 +14,7 @@ test_easyvista_config.py for the DB-over-env bearer-token resolution itself).
 """
 
 import json
+from datetime import datetime, timezone
 
 import httpx
 import pytest
@@ -268,3 +269,74 @@ def test_get_request_status_url_uses_rfc_number():
 
     easyvista.get_request_status("RFC0009999", client=_client(handler))
     assert captured["url"].endswith("/requests/RFC0009999")
+
+
+def test_get_request_comments_parses_documented_fields():
+    _configure()
+    handler = lambda r: httpx.Response(
+        200,
+        json=[
+            {
+                "ACTION_ID": "1",
+                "AM_ACTION_TYPE": "Description",
+                "DESCRIPTION": "Original ticket description.",
+                "contact_name": "pentrack",
+                "CREATION_DATE": "2026-07-01T09:00:00Z",
+            },
+            {
+                "ACTION_ID": "2",
+                "AM_ACTION_TYPE": "Note",
+                "DESCRIPTION": "Fixed.",
+                "contact_name": "EV Tech",
+                "CREATION_DATE": "2026-07-02T10:30:00Z",
+                "END_DATE_UT": "2026-07-02T10:31:00Z",
+            },
+        ],
+    )
+    result = easyvista.get_request_comments("RFC0001", client=_client(handler))
+    assert result == [
+        {
+            "ev_action_id": "1",
+            "author": "pentrack",
+            "body": "Original ticket description.",
+            "action_type": "Description",
+            "posted_at": datetime(2026, 7, 1, 9, 0, tzinfo=timezone.utc),
+            "closed": None,
+        },
+        {
+            "ev_action_id": "2",
+            "author": "EV Tech",
+            "body": "Fixed.",
+            "action_type": "Note",
+            "posted_at": datetime(2026, 7, 2, 10, 30, tzinfo=timezone.utc),
+            "closed": True,
+        },
+    ]
+
+
+def test_get_request_comments_degrades_missing_or_unrecognised_fields_to_none():
+    _configure()
+    handler = lambda r: httpx.Response(200, json=[{"UNRECOGNISED": "field"}])
+    result = easyvista.get_request_comments("RFC0001", client=_client(handler))
+    assert result == [
+        {
+            "ev_action_id": None,
+            "author": None,
+            "body": None,
+            "action_type": None,
+            "posted_at": None,
+            "closed": None,
+        }
+    ]
+
+
+def test_get_request_comments_url_uses_rfc_number():
+    _configure()
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        return httpx.Response(200, json=[])
+
+    easyvista.get_request_comments("RFC0009999", client=_client(handler))
+    assert captured["url"].endswith("/requests/comment/RFC0009999")

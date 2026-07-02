@@ -3,11 +3,11 @@
 Pushes a finding into **EasyVista Service Manager** as a request/incident and
 stores the returned reference on the finding's `itsm_reference`. **Optional and
 OFF by default** (`easyvista_enabled`) — it ships dark and is validated against a
-real tenant later, mirroring the SSO rollout. **Phase A is fully built, backend
-and frontend** (schema, auth, group/employee client methods,
-assignment-on-push, on-demand status refresh, the background poller, and the
-admin UI for all of it); see the Gitea wiki page *"EasyVista integration —
-open questions"* for the full design and phasing.
+real tenant later, mirroring the SSO rollout. **Phase A (assign + status) and
+Phase B (comments, read) are fully built, backend and frontend**; see the
+Gitea wiki page *"EasyVista integration — open questions"* for the full design
+and phasing (`A) assign + status · B) comments (read) · C) comments (write) ·
+D) close-from-pentrack`).
 
 It was built **without a live EasyVista tenant**: the code targets the
 documented [create-a-request](https://docs.easyvista.com/docs/rest-api-create-an-incident-request)
@@ -66,6 +66,24 @@ GET  {host}/api/v1/{account}/requests/{REQUEST_ID}
    globally by ticket category to discover ones it doesn't (the technician's
    stretch suggestion — needs an unconfirmed "list by category" EV endpoint).
 
+6. **Comments are read-only, cached, and synced on-demand only (Phase B).** A
+   "comment" is an EV **action** of a specific `AM_ACTION_TYPE` — the ticket
+   description itself is the first comment (wiki, locked decisions).
+   `POST /itsm/findings/{id}/comments/sync` calls `GET /requests/comment/{rfc}`,
+   **replaces** the finding's cached `FindingItsmComment` rows (EV is the
+   source of truth, so a diff/upsert isn't worth the complexity), and returns
+   them; `GET /itsm/findings/{id}/comments` returns the cache without an EV
+   call. Unlike push/refresh, both routes are open to **admins + the finding's
+   owning team** (`core/deps.can_access_finding` — the same rule
+   `routers/findings.py` uses for finding CRUD, lifted out to a shared helper
+   so the two call sites can't drift), matching the wiki's "comments visible to
+   admins + owning team" decision. **Never background-polled** — the wiki's
+   polling design keeps actions on-demand only ("the expensive/chatty part"),
+   so `services/easyvista_poller.py` is untouched by Phase B. Author
+   attribution uses the action's `contact_*` field as a display string only;
+   no join to a pentrack `User` yet (that needs `User.staff_number`/
+   `ev_employee_id` resolution, still Phase C).
+
 The whole EasyVista surface lives in **one module**, `app/services/easyvista.py`
 — that isolation *is* the adapter boundary. Retarget a different ITSM by swapping
 that file; no abstract base class until a second backend exists. The same
@@ -79,19 +97,22 @@ UI (that lands with the "Integrations" tab in a later slice).
 | Mapping + REST client + persist | `backend/app/services/easyvista.py` |
 | Background poller (due-date logic + one pass) | `backend/app/services/easyvista_poller.py` |
 | Poller asyncio task (start/stop in `lifespan`) | `backend/app/main.py` |
-| Routes (`/itsm/config`, push, refresh, `/itsm/groups`) | `backend/app/routers/itsm.py` |
+| Routes (`/itsm/config`, push, refresh, comments sync/get, `/itsm/groups`) | `backend/app/routers/itsm.py` |
 | `Team.ev_group_id` admin CRUD (`PATCH /teams/{id}`) | `backend/app/routers/teams_users.py` |
 | Bearer-token + poll-settings admin CRUD (`/easyvista-config`) | `backend/app/routers/easyvista_config.py` |
 | Bearer-token + poll-settings DB-over-env resolver | `backend/app/core/easyvista_config.py` |
 | Settings (env fallback only) | `backend/app/core/config.py` |
+| `FindingItsmComment` cache table | `backend/app/models/models.py` |
+| Shared finding-visibility rule (admin + owner user/team) | `backend/app/core/deps.py` (`can_access_finding`) |
 | Mock tests (no tenant) | `backend/tests/test_easyvista.py` |
-| Push/refresh-gating + assignment router tests | `backend/tests/test_itsm_router.py` |
+| Push/refresh/comments-gating + assignment router tests | `backend/tests/test_itsm_router.py` |
+| `can_access_finding` unit tests | `backend/tests/test_can_access_finding.py` |
 | Poller due-date logic + one-pass tests | `backend/tests/test_easyvista_poller.py` |
 | Bearer-token/poll-settings resolver/crypto tests | `backend/tests/test_easyvista_config.py`, `test_easyvista_config_router.py` |
 | Local stub server | `backend/tests/easyvista_stub.py` |
 | Admin "Integrations" tab (token + poll settings) | `frontend/src/components/Integrations.jsx` |
 | `Team.ev_group_id` editing + "Load EV groups…" picker | `frontend/src/components/AccessControl.jsx` (`TeamsManager`) |
-| Push / Refresh buttons + status display | `frontend/src/components/Findings.jsx` (`FindingDrawer`) |
+| Push / Refresh / comments UI | `frontend/src/components/Findings.jsx` (`FindingDrawer`) |
 | Frontend API client methods | `frontend/src/api.js` |
 
 ## Frontend
@@ -109,7 +130,10 @@ UI (that lands with the "Integrations" tab in a later slice).
   `STATUS_EN` label + last-synced time, plus a "Refresh status" button. Both
   admin-only, only rendered when `itsm_enabled`. The 409 gating messages (no
   owning team / team has no EV group) surface as the drawer's normal error
-  text.
+  text. Below that (Phase B): a **comments** section, shown once pushed to
+  admins *and* the finding's owning team (unlike push/refresh, not admin-only)
+  with a "Sync comments" button and the cached thread (author, action type,
+  timestamp, body).
 
 Verified in a real browser (Playwright against a live dev stack — backend +
 the local stub + Vite), not just curl/pytest: logged in, saved Integrations
@@ -133,8 +157,12 @@ additive to (not a replacement for) `idp_role_maps`:
 
 `Team.ev_group_id` is now consumed — it's stamped onto every pushed request as
 `group_id`, and pushing is blocked (409) until it's set (see "How it works").
-`staff_number`/`ev_employee_id` aren't consumed yet — needed starting Phase C
-(comment attribution via the action's `contact_*` field). They exist now so an
+`staff_number`/`ev_employee_id` still aren't consumed — Phase B's comment
+*reading* only needed the action's `contact_*` field as a display string, not
+a join back to a pentrack `User`; that join is needed starting Phase C
+(comment *writing*, so a posted comment can be attributed to the real
+pentrack user rather than the shared `pentrack` service identity). They exist
+now so an
 admin can start populating them ahead of that UI landing. Existing
 databases get the columns via `sync_missing_columns` and the `UNIQUE`
 constraint via a dedicated `sync_easyvista_unique_indexes()` step in

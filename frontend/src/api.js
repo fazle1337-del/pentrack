@@ -151,6 +151,10 @@ export const api = {
   pushFindingToItsm: (id) => request(`/itsm/findings/${id}/push`, { method: "POST" }),
   refreshFindingItsmStatus: (id) =>
     request(`/itsm/findings/${id}/refresh`, { method: "POST" }),
+  // Comments (Phase B) — visible to admins + the owning team, not admin-only.
+  getFindingItsmComments: (id) => request(`/itsm/findings/${id}/comments`),
+  syncFindingItsmComments: (id) =>
+    request(`/itsm/findings/${id}/comments/sync`, { method: "POST" }),
   // Bearer token (write-only, same pattern as the OIDC secret) + poller
   // settings (plain, not secret).
   getEasyVistaConfig: () => request("/easyvista-config"),

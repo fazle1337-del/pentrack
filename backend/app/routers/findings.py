@@ -3,7 +3,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import get_current_user, require_admin
+from app.core.deps import can_access_finding, get_current_user, require_admin
 from app.models.enums import Role
 from app.models.models import Finding, FindingReassignment, Test, User
 from app.schemas.schemas import FindingCreate, FindingOut, FindingUpdate
@@ -27,20 +27,6 @@ def _serialize(finding: Finding) -> FindingOut:
     # Attach the computed (non-persisted) field so from_attributes can read it.
     finding.sla_status = compute_sla_status(finding.due_date, finding.status)
     return FindingOut.model_validate(finding)
-
-
-def _can_access(user: User, finding: Finding) -> bool:
-    if user.role == Role.admin:
-        return True
-    if finding.remediation_owner_user_id == user.id:
-        return True
-    if (
-        user.team_id is not None
-        and finding.remediation_owner_team_id is not None
-        and finding.remediation_owner_team_id == user.team_id
-    ):
-        return True
-    return False
 
 
 @router.get("", response_model=list[FindingOut])
@@ -70,7 +56,7 @@ def get_finding(
     finding = db.get(Finding, finding_id)
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
-    if not _can_access(user, finding):
+    if not can_access_finding(user, finding):
         raise HTTPException(status_code=403, detail="Not authorised for this finding")
     return _serialize(finding)
 
@@ -102,7 +88,7 @@ def update_finding(
     finding = db.get(Finding, finding_id)
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
-    if not _can_access(user, finding):
+    if not can_access_finding(user, finding):
         raise HTTPException(status_code=403, detail="Not authorised for this finding")
 
     updates = payload.model_dump(exclude_unset=True)

@@ -11,6 +11,12 @@ to an EV group (`Team.ev_group_id`) — an individually-owned finding has no EV
 group to route the ticket to. Blocked with a 409 rather than silently omitting
 the assignment, so admins immediately see what needs fixing (assign a team,
 or map the team's EV group) instead of a ticket landing unassigned in EV.
+
+Comments (Phase B, 2026-07-02): read-only, cached, visible to admins + the
+finding's owning team (`can_access_finding`, not `require_admin` — the push/
+refresh-status routes above stay admin-only, but comments follow the wiki's
+"visible to admins + owning team" decision). Synced on-demand only, never by
+the background poller (`services/easyvista_poller.py` is untouched).
 """
 
 from datetime import datetime, timezone
@@ -20,8 +26,9 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.deps import require_admin
-from app.models.models import Finding, Team
+from app.core.deps import can_access_finding, get_current_user, require_admin
+from app.models.models import Finding, FindingItsmComment, Team, User
+from app.schemas.schemas import ItsmCommentOut
 from app.services import easyvista
 
 settings = get_settings()
@@ -125,3 +132,70 @@ def refresh_finding_status(
         "itsm_closed": finding.itsm_closed,
         "itsm_synced_at": finding.itsm_synced_at,
     }
+
+
+def _get_pushed_finding_for(user: User, finding_id: int, db: Session) -> Finding:
+    """Shared gating for the two comment routes below: enabled, exists,
+    visible to this user (admins + owning team — same rule as finding
+    access generally, per the wiki's "comments visible to admins + owning
+    team" decision), and already pushed to EV."""
+    if not settings.easyvista_enabled:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, detail="ITSM integration is not enabled"
+        )
+    finding = db.get(Finding, finding_id)
+    if not finding:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Finding not found")
+    if not can_access_finding(user, finding):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Not authorised for this finding")
+    if not finding.itsm_reference:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail="This finding hasn't been pushed to EasyVista yet.",
+        )
+    return finding
+
+
+@router.post("/findings/{finding_id}/comments/sync", response_model=list[ItsmCommentOut])
+def sync_finding_comments(
+    finding_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Fetch the ticket's comment thread from EV and replace the local cache
+    for this finding. On-demand only — comments are never background-polled
+    (wiki "Polling design": actions are the expensive/chatty part)."""
+    finding = _get_pushed_finding_for(user, finding_id, db)
+    try:
+        fetched = easyvista.get_request_comments(finding.itsm_reference, db)
+    except easyvista.EasyVistaError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    db.query(FindingItsmComment).filter(FindingItsmComment.finding_id == finding.id).delete()
+    for c in fetched:
+        db.add(FindingItsmComment(finding_id=finding.id, **c))
+    db.commit()
+
+    return (
+        db.query(FindingItsmComment)
+        .filter(FindingItsmComment.finding_id == finding.id)
+        .order_by(FindingItsmComment.id.desc())
+        .all()
+    )
+
+
+@router.get("/findings/{finding_id}/comments", response_model=list[ItsmCommentOut])
+def get_finding_comments(
+    finding_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Return the locally cached comment thread (no EV call) — call the sync
+    route first to populate/refresh it."""
+    finding = _get_pushed_finding_for(user, finding_id, db)
+    return (
+        db.query(FindingItsmComment)
+        .filter(FindingItsmComment.finding_id == finding.id)
+        .order_by(FindingItsmComment.id.desc())
+        .all()
+    )

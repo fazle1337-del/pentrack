@@ -185,6 +185,20 @@ class FindingOut(BaseModel):
     updated_at: datetime
 
 
+class ItsmCommentOut(BaseModel):
+    """A cached EasyVista ticket comment (Phase B). Read-only, returned by
+    GET/POST /itsm/findings/{id}/comments[/sync]."""
+
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    author: str | None
+    body: str | None
+    action_type: str | None
+    posted_at: datetime | None
+    closed: bool | None
+    synced_at: datetime
+
+
 class AttachmentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int

@@ -219,6 +219,7 @@ class Finding(Base):
     test: Mapped["Test"] = relationship(back_populates="findings")
     attachments: Mapped[list["FindingAttachment"]] = relationship(back_populates="finding", cascade="all, delete-orphan")
     reassignments: Mapped[list["FindingReassignment"]] = relationship(back_populates="finding", cascade="all, delete-orphan")
+    itsm_comments: Mapped[list["FindingItsmComment"]] = relationship(back_populates="finding", cascade="all, delete-orphan")
 
 
 class TestAttachment(Base):
@@ -245,6 +246,35 @@ class FindingAttachment(Base):
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     finding: Mapped["Finding"] = relationship(back_populates="attachments")
+
+
+class FindingItsmComment(Base):
+    """Cached copy of an EasyVista ticket comment (Phase B, 2026-07-02).
+
+    A "comment" is an EV **action** of a specific AM_ACTION_TYPE — the ticket
+    description itself is the first comment (wiki "EasyVista integration —
+    open questions", locked decisions). Read-only cache: EV is the source of
+    truth, synced on-demand (POST .../comments/sync), never by the background
+    poller (the wiki's polling design deliberately keeps actions on-demand
+    only — "the expensive/chatty part"). Each sync **replaces** the full set
+    for a finding rather than diffing/upserting, since this is read-only and
+    EV is authoritative. Field names are unverified against a live tenant —
+    same caveat as the rest of services/easyvista.py.
+    """
+
+    __tablename__ = "finding_itsm_comments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    finding_id: Mapped[int] = mapped_column(ForeignKey("findings.id"), nullable=False)
+    ev_action_id: Mapped[str | None] = mapped_column(String(100))
+    author: Mapped[str | None] = mapped_column(String(300))
+    body: Mapped[str | None] = mapped_column(Text)
+    action_type: Mapped[str | None] = mapped_column(String(200))
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed: Mapped[bool | None] = mapped_column(Boolean)
+    synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    finding: Mapped["Finding"] = relationship(back_populates="itsm_comments")
 
 
 class FindingReassignment(Base):

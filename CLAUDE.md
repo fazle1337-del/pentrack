@@ -201,15 +201,16 @@ harness is `docker-compose.sso-dev.yml` + `docs/sso-testing.md`.
 
 ## EasyVista (ITSM) integration — planning
 
-**Status: Phase A complete (backend + frontend), landed on `main`
-(2026-07-01/02), flag OFF, never deployed active.** The original flag-gated
-scaffold (PR #10, one-directional "push a finding as an EV request") plus
-everything below (corrections, assignment, status sync, the poller, and the
-UI) are all live in `main` behind `easyvista_enabled` (default `False` —
-`POST /itsm/findings/{id}/push` 404s until an admin turns it on). Guide:
+**Status: Phase A (assign + status) and Phase B (comments, read) complete
+(backend + frontend), landed on `main` (2026-07-01/02), flag OFF, never
+deployed active.** The original flag-gated scaffold (PR #10, one-directional
+"push a finding as an EV request") plus everything below (corrections,
+assignment, status sync, the poller, comments, and the UI) are all live in
+`main` behind `easyvista_enabled` (default `False` — `POST
+/itsm/findings/{id}/push` 404s until an admin turns it on). Guide:
 `docs/easyvista-integration.md`.
 
-The intended feature is **bigger** than Phase A: a stateful **two-way sync**
+The intended feature is **bigger** than Phase A/B: a stateful **two-way sync**
 (assign → status → comments → close). All design questions are resolved
 except one (Q5, below).
 
@@ -347,16 +348,39 @@ except one (Q5, below).
   open actions must be queried separately from ticket status.
 - **EV API endpoints confirmed:** `POST /requests` (create), `GET /requests/{rfc}`
   (status as `STATUS_EN`/`STATUS_GUID`), `GET /requests/comment/{rfc}` (read
-  comments), `POST /requests/{rfc}/actions` (post a comment as an *action*),
-  close/suspend/reopen endpoints — group/employee endpoints are implemented,
-  see above; status/comments/close endpoints are Phase B–D, not built yet.
-- **Proposed phasing:** A) assign + status — **fully landed, backend and
-  frontend** (schema, auth, group/employee client methods,
-  assignment-on-push, on-demand status refresh, the background poller, the
-  admin **Integrations** tab, `Team.ev_group_id` editing in the Access tab's
-  Teams manager, and Push/Refresh buttons on the finding drawer — verified
-  in a real browser via Playwright, not just curl/tests) · B) comments (read)
-  · C) comments (write) · D) close-from-pentrack.
+  comments — **consumed, Phase B**), `POST /requests/{rfc}/actions` (post a
+  comment as an *action* — Phase C, not built), close/suspend/reopen endpoints
+  (Phase D, not built) — group/employee endpoints are implemented, see above.
+- **Comments (Phase B, 2026-07-02) landed — backend and frontend, read-only.**
+  New `FindingItsmComment` cache table (`models.py`) and
+  `easyvista.get_request_comments(rfc_number, db)` (`GET
+  /requests/comment/{rfc}`, same defensive-field-parsing pattern as
+  `get_request_status` — casing unverified against a live tenant, degrades to
+  `None` rather than guessing). Two routes on `routers/itsm.py`: `POST
+  /itsm/findings/{id}/comments/sync` (fetches from EV, **replaces** the
+  finding's cached rows — EV is the source of truth, so no diff/upsert) and
+  `GET /itsm/findings/{id}/comments` (cache only, no EV call). Both are gated
+  by a new shared `core.deps.can_access_finding` (admin, or owner user/team) —
+  lifted out of `routers/findings.py`'s previously-private `_can_access` so
+  `routers/itsm.py` and `routers/attachments.py` can share the exact same
+  visibility rule instead of redefining it, matching the wiki's "comments
+  visible to admins + owning team" decision (unlike push/refresh, which stay
+  admin-only). **Never background-polled** — comments are on-demand only per
+  the wiki's polling design ("actions are the expensive/chatty part"), so
+  `services/easyvista_poller.py` is untouched. Frontend: a **Comments**
+  section in the finding drawer (`Findings.jsx`), shown to admins + the
+  owning team (not admin-gated like the status block above it) once a finding
+  is pushed, with a "Sync comments" button and the cached thread (author,
+  action type, timestamp, body) — `App.jsx` now passes `me` down to
+  `Findings`/`FindingDrawer` so the drawer can check the viewer's `team_id`
+  against the finding's owning team. Author attribution is a display string
+  from the action's `contact_*` field only — no join to a pentrack `User` yet
+  (`staff_number`/`ev_employee_id` are still unconsumed; that's Phase C,
+  needed for comment *writing* so a posted comment can be attributed to the
+  real user instead of the shared `pentrack` service identity).
+- **Proposed phasing:** A) assign + status — **fully landed** (see above) ·
+  B) comments (read) — **fully landed, backend and frontend** (see above) ·
+  C) comments (write) · D) close-from-pentrack.
 
 ## Database migrations
 
