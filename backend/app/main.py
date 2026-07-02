@@ -1,3 +1,6 @@
+import asyncio
+import contextlib
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -15,6 +18,7 @@ from app.routers import (
     attachments,
     auth,
     bookings,
+    easyvista_config,
     findings,
     idp_maps,
     imports,
@@ -25,8 +29,10 @@ from app.routers import (
     teams_users,
     tests,
 )
+from app.services.easyvista_poller import poll_once
 
 settings = get_settings()
+_logger = logging.getLogger(__name__)
 
 
 def seed_admin():
@@ -68,6 +74,38 @@ def sync_missing_columns():
                 conn.execute(
                     text(f'ALTER TABLE {table.name} ADD COLUMN {col.name} {col_type}')
                 )
+
+
+def sync_easyvista_unique_indexes():
+    """`sync_missing_columns`'s ADD COLUMN doesn't carry over UNIQUE (only the
+    type is compiled, not constraints) — so the EasyVista id columns added
+    2026-07-01 (Team.ev_group_id, User.staff_number, User.ev_employee_id) need
+    an explicit follow-up on existing databases. New deployments already get
+    the constraint via create_all; this is idempotent so it's a no-op there.
+    A unique index on a nullable column allows any number of NULLs (each NULL
+    is distinct), which is exactly what's wanted while most rows are unmapped.
+    """
+    with engine.begin() as conn:
+        if "teams" not in set(inspect(conn).get_table_names()):
+            return
+        conn.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_teams_ev_group_id "
+                "ON teams (ev_group_id)"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_staff_number "
+                "ON users (staff_number)"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_ev_employee_id "
+                "ON users (ev_employee_id)"
+            )
+        )
 
 
 def migrate_schedule_feature():
@@ -149,14 +187,38 @@ def seed_idp_bootstrap():
         db.close()
 
 
+async def _easyvista_poller_loop():
+    """Ticks every `easyvista_poll_tick_seconds`; poll_once() itself no-ops
+    unless polling is enabled (DB-over-env), so this stays cheap when off.
+    Runs poll_once (sync DB/HTTP work) in a thread so it never blocks the
+    event loop that's also serving API requests."""
+    while True:
+        if settings.easyvista_enabled:
+            db = SessionLocal()
+            try:
+                await asyncio.to_thread(poll_once, db)
+            except Exception:
+                _logger.exception("EasyVista poll tick failed")
+            finally:
+                db.close()
+        await asyncio.sleep(settings.easyvista_poll_tick_seconds)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     migrate_schedule_feature()
     sync_missing_columns()
+    sync_easyvista_unique_indexes()
     seed_admin()
     seed_idp_bootstrap()
-    yield
+    poller_task = asyncio.create_task(_easyvista_poller_loop())
+    try:
+        yield
+    finally:
+        poller_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await poller_task
 
 
 # Disable interactive docs unless explicitly enabled (issue #9): an internet-
@@ -202,6 +264,7 @@ app.include_router(bookings.router)
 app.include_router(scopes.router)
 app.include_router(related.router)
 app.include_router(itsm.router)
+app.include_router(easyvista_config.router)
 
 
 @app.get("/health")

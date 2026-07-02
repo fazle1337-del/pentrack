@@ -30,6 +30,11 @@ class Team(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
+    # EasyVista assignee-group id (2026-07-01 correction: EV groups are a
+    # separate namespace from Entra groups, so ticket routing can't reuse
+    # idp_role_maps — see CLAUDE.md "EasyVista (ITSM) integration"). Nullable:
+    # most teams won't have one set until an admin maps it via GET /groups.
+    ev_group_id: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True)
 
     users: Mapped[list["User"]] = relationship(back_populates="team")
 
@@ -53,6 +58,14 @@ class User(Base):
     token_version: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
+    # EasyVista person-identity fields (see Team.ev_group_id above).
+    # staff_number is the Entra-side value that EV's AM_EMPLOYEE.IDENTIFICATION
+    # matches; ev_employee_id is EV's own AM_EMPLOYEE.EMPLOYEE_ID, resolved by
+    # querying GET /employees against staff_number (or email <-> AM_EMPLOYEE.LOGIN
+    # as a fallback). Not consumed by any code path yet — needed starting Phase C
+    # (comment attribution via the action's contact_* field).
+    staff_number: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True)
+    ev_employee_id: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True)
 
     team: Mapped["Team | None"] = relationship(back_populates="users")
 
@@ -100,6 +113,40 @@ class OidcSettings(Base):
     scopes: Mapped[str | None] = mapped_column(String(500), nullable=True)
     groups_claim: Mapped[str | None] = mapped_column(String(200), nullable=True)
     post_login_redirect: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), onupdate=func.now(), server_default=func.now()
+    )
+
+
+class EasyVistaSettings(Base):
+    """Single-row, runtime-editable store for the EasyVista bearer token +
+    background-poller settings.
+
+    2026-07-01 correction: EV auth is a bearer token tied to a managed identity,
+    not HTTP Basic (the scaffold's original assumption was wrong — see
+    CLAUDE.md "EasyVista (ITSM) integration"). Mirrors OidcSettings/
+    client_secret_enc: encrypted at rest via ``app/core/crypto.py`` (a distinct
+    KDF context — see ``EASYVISTA_CONTEXT`` — so this key can never collide with
+    the OIDC secret's), write-only, never returned by the read endpoint.
+    Rotation is an admin action (request the technician rotate it in EV, then
+    re-enter it here), so it never needs a host-side file handoff — same
+    pattern as the OIDC client secret. Host/account/catalog/requestor stay
+    env-configured for now (only the token has a rotation lifecycle).
+
+    The poll_* columns are the "admin-tab adjustable" half of the locked
+    polling decision — DB-over-env per field, resolved in
+    ``app/core/easyvista_config.py``, same as the token. Not secret, so stored
+    plain (unlike the token) and returned as-is by the read endpoint.
+    """
+
+    __tablename__ = "easyvista_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)  # always 1
+    bearer_token_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    poll_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    poll_open_interval_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    poll_closed_interval_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    poll_closed_lookback_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), onupdate=func.now(), server_default=func.now()
     )
@@ -156,6 +203,15 @@ class Finding(Base):
     additional_information: Mapped[str | None] = mapped_column(Text)
     resolver_reference: Mapped[str | None] = mapped_column(String(200))
     date_logged_in_resolver: Mapped[date | None] = mapped_column(Date)
+    # EasyVista status cache (2026-07-01, Phase A). Populated by
+    # POST /itsm/findings/{id}/refresh (on-demand for now — no background
+    # poller yet). itsm_closed is derived from EV's END_DATE_UT being set, not
+    # a status-label match (that's the authoritative "closed" signal per the
+    # wiki; itsm_status_label is just the raw STATUS_EN for display). System-
+    # managed — not exposed on FindingCreate/FindingUpdate, only FindingOut.
+    itsm_status_label: Mapped[str | None] = mapped_column(String(200))
+    itsm_closed: Mapped[bool | None] = mapped_column(Boolean)
+    itsm_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

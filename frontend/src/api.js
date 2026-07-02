@@ -139,9 +139,22 @@ export const api = {
   // Teams / users
   listTeams: () => request("/teams"),
   createTeam: (name) => request("/teams", { method: "POST", body: { name } }),
-  updateTeam: (id, name) => request(`/teams/${id}`, { method: "PATCH", body: { name } }),
+  // body: { name, ev_group_id? } — ev_group_id omitted leaves it unchanged,
+  // "" clears it (see routers/teams_users.py).
+  updateTeam: (id, body) => request(`/teams/${id}`, { method: "PATCH", body }),
   deleteTeam: (id) => request(`/teams/${id}`, { method: "DELETE" }),
   listUsers: () => request("/users"),
+  // EasyVista (ITSM) — Phase A. itsm_enabled gates whether any of this is
+  // shown at all (the integration ships dark by default).
+  getItsmConfig: () => request("/itsm/config"),
+  listEvGroups: () => request("/itsm/groups"),
+  pushFindingToItsm: (id) => request(`/itsm/findings/${id}/push`, { method: "POST" }),
+  refreshFindingItsmStatus: (id) =>
+    request(`/itsm/findings/${id}/refresh`, { method: "POST" }),
+  // Bearer token (write-only, same pattern as the OIDC secret) + poller
+  // settings (plain, not secret).
+  getEasyVistaConfig: () => request("/easyvista-config"),
+  updateEasyVistaConfig: (body) => request("/easyvista-config", { method: "PUT", body }),
   // Attachments
   listFindingAttachments: (id) => request(`/findings/${id}/attachments`),
   uploadFindingAttachment: (id, file) => {

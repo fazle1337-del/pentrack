@@ -6,6 +6,7 @@ import Tests from "./components/Tests.jsx";
 import Bau from "./components/Bau.jsx";
 import Scopes from "./components/Scopes.jsx";
 import AccessControl from "./components/AccessControl.jsx";
+import Integrations from "./components/Integrations.jsx";
 
 const BASE_TABS = ["Findings", "Tests", "BAU Schedule", "Scopes"];
 
@@ -78,7 +79,7 @@ export default function App() {
   if (!authed) return <Login onLoggedIn={() => setAuthed(true)} ssoError={ssoError} />;
 
   const isAdmin = me?.role === "admin";
-  const tabs = isAdmin ? [...BASE_TABS, "Access"] : BASE_TABS;
+  const tabs = isAdmin ? [...BASE_TABS, "Access", "Integrations"] : BASE_TABS;
   const initials = me?.name
     ? me.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()
     : "··";
@@ -142,6 +143,7 @@ export default function App() {
       {tab === "Access" && isAdmin && (
         <AccessControl teams={teams} onTeamsChanged={reloadTeams} />
       )}
+      {tab === "Integrations" && isAdmin && <Integrations />}
     </>
   );
 }

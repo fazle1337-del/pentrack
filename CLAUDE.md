@@ -201,37 +201,162 @@ harness is `docker-compose.sso-dev.yml` + `docs/sso-testing.md`.
 
 ## EasyVista (ITSM) integration — planning
 
-**Status: planning + scaffold only. Not on `main`, not deployed.** A flag-gated
-scaffold (one-directional "push a finding as an EV request") lives on branch
-`easyvista-integration`, OFF by default (`easyvista_enabled`). Guide for the
-scaffold as built: `docs/easyvista-integration.md`.
+**Status: Phase A complete (backend + frontend), landed on `main`
+(2026-07-01/02), flag OFF, never deployed active.** The original flag-gated
+scaffold (PR #10, one-directional "push a finding as an EV request") plus
+everything below (corrections, assignment, status sync, the poller, and the
+UI) are all live in `main` behind `easyvista_enabled` (default `False` —
+`POST /itsm/findings/{id}/push` 404s until an admin turns it on). Guide:
+`docs/easyvista-integration.md`.
 
-The intended feature is **bigger** than the scaffold: a stateful **two-way sync**
-(assign → status → comments → close). Requirements are mostly settled; a few
-answers are still pending **from the EV/Entra admin** before building.
+The intended feature is **bigger** than Phase A: a stateful **two-way sync**
+(assign → status → comments → close). All design questions are resolved
+except one (Q5, below).
 
-- **Open questions to research:** tracked in the **Gitea wiki**, page
-  *"EasyVista integration — open questions"* (`fazle1337/pentrack` wiki). Resolve
-  those before writing Phase-A code.
-- **Locked design decisions:** assignment is **group-based** (finding owner team =
-  Entra group = EV assignee group); a single `pentrack` Entra identity is the
-  requestor; **one ticket per finding**; assign is **admin-only**; EV is the
-  **source of truth**, synced by **polling** (no EV webhooks); status mapping is
-  **data-driven/configurable** for other tenants; comments are **cached**, visible
-  to admins + the owning team, attributed to the real user via the action's
-  `contact_*` field; poll intervals (open vs closed ticket) + on-demand refresh
-  are **admin-tab adjustable**; the poller is **in-process** so it works in both
-  Azure ACR and Umbrel.
+- **Open questions:** tracked in the **Gitea wiki**, page *"EasyVista
+  integration — open questions"* (`fazle1337/pentrack` wiki). Q1–Q4 resolved
+  2026-07-01. **Only Q5 remains:** the tenant's actual `STATUS_EN`/
+  `STATUS_GUID` status list — not a hard blocker (closed/open is `END_DATE_UT`
+  being set, not a status enum value), just needed to seed the admin-facing
+  `status → {open|closed}` display map. Follow-up sent to the technician.
+- **Q3/Q4 resolved:** raising a ticket is **admin-only** in all cases; once
+  raised, the assigned owner team can add comments. All three transitions
+  (close/reopen/suspend) are supported by the EV service account — no
+  API-side restriction to design around. Token rotation: the **admin**
+  requests the technician rotate the bearer token, then re-enters it via
+  `PUT /easyvista-config` — same pattern as the Entra/OIDC client secret (see
+  "Runtime SSO config" above).
+- **Entra groups ≠ EV groups (corrected + built).** EV has its own
+  `AM_GROUP`/`AM_EMPLOYEE`/`AM_EMPLGROUP` tables with no shared namespace with
+  Entra; the only cross-system join key for *people* is EV's `AM_EMPLOYEE.
+  IDENTIFICATION` = the Entra staff number (email ↔ `AM_EMPLOYEE.LOGIN` as
+  fallback). **Schema landed:** `Team.ev_group_id`, `User.staff_number`,
+  `User.ev_employee_id` (all unique, nullable — `models.py`), additive to, not
+  a replacement for, the existing Entra-group-driven `idp_role_maps` (which
+  still governs pentrack RBAC; the new columns are purely for EV ticket
+  routing). `ev_group_id` is consumed by assignment (see below) and settable
+  from the frontend **Access** tab's Teams manager (rename row gained an "EV
+  group id" field + a "Load EV groups…" picker sourced from
+  `GET /itsm/groups`); `staff_number`/`ev_employee_id` aren't consumed or
+  UI-editable yet — needed starting Phase C (comment attribution).
+  **Skipped deliberately:** the
+  technician also suggested a Team↔User EV-membership junction table
+  (mirroring `AM_EMPLGROUP`) — not built, since nothing in Phases A–D
+  consumes it; add it if a real need for multi-group EV membership tracking
+  shows up.
+- **Auth is a bearer token, not HTTP Basic (corrected + built).** EV uses a
+  bearer token from a managed-identity account, expiring on a tenant-set
+  policy capped at yearly, no auto-refresh. `services/easyvista.py` now sends
+  `Authorization: Bearer <token>`; the token resolves DB-over-env via
+  `core/easyvista_config.py`, stored encrypted at rest
+  (`EasyVistaSettings.bearer_token_enc`, a **distinct Fernet KDF context**
+  from the OIDC secret — `core/crypto.py`'s `EASYVISTA_CONTEXT`) and editable
+  via the new admin-only `PUT/GET /easyvista-config`
+  (`routers/easyvista_config.py`), now with a frontend panel too (the new
+  **Integrations** tab, `Integrations.jsx` — write-only like the OIDC secret,
+  same "leave blank to keep" pattern). The old
+  `easyvista_login`/`easyvista_password`/`easyvista_password_file` settings
+  and `EASYVISTA_PASSWORD_FILE` deploy step are gone; env fallback is now
+  `EASYVISTA_BEARER_TOKEN`/`EASYVISTA_BEARER_TOKEN_FILE` (pre-admin-UI
+  bootstrap only — admin UI always wins once set). No expiry reminder built
+  yet (still needed).
+- **`rfc_number` identifier bug fixed.** `create_request` now does a
+  follow-up `GET /requests/{REQUEST_ID}` right after create to resolve and
+  store `rfc_number` (falling back to the raw `REQUEST_ID` if that lookup
+  fails, so a successfully created ticket's reference is never lost) — this
+  assumption (`GET /requests/{id}` accepts `REQUEST_ID` as well as
+  `rfc_number`) is unverified against a live tenant, same caveat the auth
+  mechanism had before it was confirmed.
+- **New read-only EV client methods landed:** `list_groups`, `get_group`,
+  `list_group_employees`, `list_employee_groups` in `services/easyvista.py`
+  (`GET /groups`, `/groups/{id}`, `/groups/{id}/employees`,
+  `/employees/{id}/groups`) — `GET /itsm/groups` (admin-only) exposes
+  `list_groups` for the future Integrations-tab UI; the rest aren't wired to a
+  route yet.
+- **Assignment logic landed.** `PATCH /teams/{id}` now accepts `ev_group_id`
+  (omit to leave unchanged — so plain renames from the existing Access-tab UI
+  can't accidentally wipe it; `""` clears it; enforces uniqueness). Pushing a
+  finding (`POST /itsm/findings/{id}/push`) now stamps the owning team's
+  `ev_group_id` onto the EV request as `group_id`, and is **gated**: 409 if the
+  finding has no owning team, 409 if the team has no `ev_group_id` mapped yet
+  — no ticket is ever raised without an assignee group.
+- **Bug found + fixed during manual end-to-end testing (real Postgres + the
+  local stub server, not just mocked tests):** `create_request` was closing
+  its own `httpx.Client` right after the POST, then reusing that closed client
+  for the `rfc_number` follow-up GET — broke every real push (every unit test
+  had injected its own client, masking it, since `owns_client` is only `True`
+  in the real code path). Fixed by keeping the client open across both calls;
+  regression-tested by making the module construct its own client against a
+  mock transport (no `client=` kwarg passed), which is the path that broke.
+  Same end-to-end pass also caught the local stub server only indexing
+  tickets by numeric `REQUEST_ID`, not `rfc_number` — fixed in
+  `tests/easyvista_stub.py` (a test-double gap, not a production bug).
+- **Status sync landed — both on-demand and background polling.**
+  `services/easyvista.get_request_status(rfc_number, db)` does
+  `GET /requests/{rfc}`, returning the raw `STATUS_EN`/`STATUS_GUID` label
+  plus a `closed` bool derived from `END_DATE_UT` being present (unverified
+  field-name assumption, same caveat as the identifier gotcha — tries a few
+  casings, `None` if absent rather than guessing). `POST
+  /itsm/findings/{id}/refresh` (admin-only; 409 if the finding was never
+  pushed) is the on-demand path; caches the result on three new `Finding`
+  columns (`itsm_status_label`, `itsm_closed`, `itsm_synced_at` —
+  system-managed, `FindingOut`-only, not on `FindingCreate`/`FindingUpdate`).
+  The finding drawer (`Findings.jsx`) now shows a **"Push to EasyVista"**
+  button when there's no `itsm_reference` yet, and once pushed, an
+  open/closed badge + the raw status label + last-synced time plus a
+  **"Refresh status"** button — admin-only, only rendered when
+  `GET /itsm/config` reports `itsm_enabled`. The 409 gating messages (no
+  owning team / team has no EV group) surface directly as the drawer's error
+  text.
+- **Background poller landed** (`services/easyvista_poller.py`, an asyncio
+  task started/cancelled in `main.py`'s `lifespan`, ticking every
+  `easyvista_poll_tick_seconds`, running the sync `poll_once(db)` via
+  `asyncio.to_thread` so it never blocks the API event loop). Only polls
+  findings pentrack already knows about (`itsm_reference` set) — does **not**
+  poll EV globally by ticket category to discover unknown tickets (the
+  technician's stretch suggestion; needs a "list by category" EV endpoint
+  that isn't confirmed). Per-finding due-date logic implements the locked
+  two-interval decision: open findings re-poll on `poll_open_interval_seconds`
+  (default daily), closed ones on `poll_closed_interval_seconds` (default
+  weekly) but stop being polled at all once `poll_closed_lookback_days`
+  (default 365) has passed since last sync — matches the technician's
+  suggested defaults. All four settings (`poll_enabled` + the three
+  intervals) are **admin-tab adjustable**: DB-over-env on `EasyVistaSettings`,
+  same non-secret-plain-storage pattern as the bearer token is
+  encrypted-secret storage, both via `PUT/GET /easyvista-config`. Verified
+  end-to-end against real Postgres + the local stub with a 2-second tick
+  interval: pushed a finding, waited with **no manual `/refresh` call**, and
+  confirmed the background task picked it up and cached its status
+  automatically.
+- **Locked design decisions:** assignment is **group-based**
+  but via a **new explicit EV-group mapping**, not the Entra group (see
+  correction above); a single `pentrack` Entra identity is the requestor;
+  **one ticket per finding**; assign is **admin-only**; EV is the **source of
+  truth**, synced by **polling** (no EV webhooks — technician suggests daily
+  polling of open tickets in the pentest category, closed-ticket polling bounded
+  to ~1 year back, and on-demand polling of actions per ticket); status mapping
+  is **data-driven/configurable**, with the closed signal being `END_DATE_UT`
+  (ticket *or* action level) rather than a status enum value; comments are
+  **cached** — confirmed a "comment" = an EV **action** of a specific
+  `AM_ACTION_TYPE` (the ticket description itself is the first comment) —
+  visible to admins + the owning team, attributed to the real user via the
+  action's `contact_*` field; poll intervals (open vs closed ticket) + on-demand
+  refresh are **admin-tab adjustable**; the poller is **in-process** so it works
+  in both Azure ACR and Umbrel. Ownership/ticket-closing state lives at the
+  **Action** level, not just the ticket level (many actions per `SD_REQUEST`) —
+  open actions must be queried separately from ticket status.
 - **EV API endpoints confirmed:** `POST /requests` (create), `GET /requests/{rfc}`
   (status as `STATUS_EN`/`STATUS_GUID`), `GET /requests/comment/{rfc}` (read
   comments), `POST /requests/{rfc}/actions` (post a comment as an *action*),
-  close/suspend/reopen endpoints. **Identifier gotcha:** create returns an HREF
-  ending in `REQUEST_ID`, but read/comment/close key off `rfc_number` — so capture
-  `rfc_number` via a `GET` right after create and store *that* (the current
-  scaffold stores the wrong id).
-- **Proposed phasing:** A) assign + status (read-only sync) · B) comments (read) ·
-  C) comments (write) · D) close-from-pentrack · plus admin "Integrations" tab +
-  background poller.
+  close/suspend/reopen endpoints — group/employee endpoints are implemented,
+  see above; status/comments/close endpoints are Phase B–D, not built yet.
+- **Proposed phasing:** A) assign + status — **fully landed, backend and
+  frontend** (schema, auth, group/employee client methods,
+  assignment-on-push, on-demand status refresh, the background poller, the
+  admin **Integrations** tab, `Team.ev_group_id` editing in the Access tab's
+  Teams manager, and Push/Refresh buttons on the finding drawer — verified
+  in a real browser via Playwright, not just curl/tests) · B) comments (read)
+  · C) comments (write) · D) close-from-pentrack.
 
 ## Database migrations
 

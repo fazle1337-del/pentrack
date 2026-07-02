@@ -59,6 +59,27 @@ def update_team(
     if clash:
         raise HTTPException(status_code=409, detail="Team already exists")
     team.name = name
+
+    # ev_group_id: None (field omitted) = leave unchanged, so existing
+    # rename-only callers can't accidentally wipe it. "" clears it explicitly
+    # (stored as NULL, not "" — the unique index would otherwise collide
+    # across every team that clears it).
+    if payload.ev_group_id is not None:
+        ev_group_id = payload.ev_group_id.strip() or None
+        if ev_group_id:
+            ev_clash = (
+                db.query(Team)
+                .filter(Team.ev_group_id == ev_group_id, Team.id != team_id)
+                .first()
+            )
+            if ev_clash:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"EasyVista group '{ev_group_id}' is already mapped "
+                    f"to team '{ev_clash.name}'",
+                )
+        team.ev_group_id = ev_group_id
+
     db.commit()
     db.refresh(team)
     return team

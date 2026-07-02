@@ -135,11 +135,18 @@ function SsoConnection() {
 // owner picker and the group→role mapping below, but had no UI — they could only
 // be made via the API or CSV import. onTeamsChanged refreshes the app-wide teams
 // list so those dropdowns update immediately.
-function TeamsManager({ teams, onTeamsChanged }) {
+//
+// Also edits Team.ev_group_id (2026-07-01/02) — the EasyVista assignee-group
+// mapping a pushed finding routes to. Only shown/editable when the ITSM
+// integration is enabled (itsmEnabled), since there's nothing to map to
+// otherwise. "Load EV groups" is a convenience picker (GET /itsm/groups) so an
+// admin doesn't have to know the raw group id by heart.
+function TeamsManager({ teams, onTeamsChanged, itsmEnabled }) {
   const [name, setName] = useState("");
-  const [editing, setEditing] = useState(null); // { id, name }
+  const [editing, setEditing] = useState(null); // { id, name, ev_group_id }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [evGroups, setEvGroups] = useState(null); // null = not loaded yet
 
   async function run(fn) {
     setBusy(true);
@@ -173,7 +180,10 @@ function TeamsManager({ teams, onTeamsChanged }) {
       return;
     }
     await run(async () => {
-      await api.updateTeam(editing.id, n);
+      await api.updateTeam(editing.id, {
+        name: n,
+        ev_group_id: editing.ev_group_id.trim(),
+      });
       setEditing(null);
     });
   }
@@ -183,6 +193,15 @@ function TeamsManager({ teams, onTeamsChanged }) {
     await run(() => api.deleteTeam(team.id));
   }
 
+  async function loadEvGroups() {
+    setError("");
+    try {
+      setEvGroups(await api.listEvGroups());
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   return (
     <div style={{ maxWidth: 760, marginBottom: 28 }}>
       <h2 style={{ fontSize: 16, margin: "4px 0 2px" }}>Teams</h2>
@@ -190,6 +209,8 @@ function TeamsManager({ teams, onTeamsChanged }) {
         Teams can own findings and be the target of a group → role mapping. A team
         that's still referenced can't be deleted until those references are
         reassigned.
+        {itsmEnabled &&
+          " Teams pushed to EasyVista also need an EV group mapped — that's what routes the ticket."}
       </p>
 
       <div className="field" style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
@@ -229,13 +250,55 @@ function TeamsManager({ teams, onTeamsChanged }) {
                       if (e.key === "Escape") setEditing(null);
                     }}
                   />
+                  {itsmEnabled && (
+                    <>
+                      <input
+                        className="in"
+                        style={{ flex: "1 1 180px" }}
+                        placeholder="EV group id"
+                        value={editing.ev_group_id}
+                        onChange={(e) => setEditing({ ...editing, ev_group_id: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") saveEdit();
+                          if (e.key === "Escape") setEditing(null);
+                        }}
+                      />
+                      {evGroups === null ? (
+                        <button className="btn ghost" onClick={loadEvGroups}>Load EV groups…</button>
+                      ) : (
+                        <select
+                          value=""
+                          onChange={(e) =>
+                            e.target.value && setEditing({ ...editing, ev_group_id: e.target.value })
+                          }
+                        >
+                          <option value="">— pick from EV —</option>
+                          {evGroups.map((g) => (
+                            <option key={g.GROUP_ID} value={g.GROUP_ID}>
+                              {g.GROUP_EN || g.GROUP_ID} ({g.GROUP_ID})
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </>
+                  )}
                   <button className="btn" disabled={busy} onClick={saveEdit}>Save</button>
                   <button className="att-remove" title="Cancel" onClick={() => setEditing(null)}>×</button>
                 </>
               ) : (
                 <>
-                  <div className="mapcol-name" style={{ flex: "1 1 auto" }}>{t.name}</div>
-                  <button className="btn ghost" onClick={() => setEditing({ id: t.id, name: t.name })}>Rename</button>
+                  <div className="mapcol-name" style={{ flex: "1 1 auto" }}>
+                    {t.name}
+                    {itsmEnabled && t.ev_group_id && (
+                      <div className="mapsample">EV group: {t.ev_group_id}</div>
+                    )}
+                  </div>
+                  <button
+                    className="btn ghost"
+                    onClick={() => setEditing({ id: t.id, name: t.name, ev_group_id: t.ev_group_id || "" })}
+                  >
+                    Rename
+                  </button>
                   <button className="att-remove" title="Delete team" onClick={() => remove(t)}>×</button>
                 </>
               )}
@@ -256,6 +319,7 @@ export default function AccessControl({ teams, onTeamsChanged }) {
   const [error, setError] = useState("");
   const [form, setForm] = useState({ idp_group_id: "", label: "", role: "member", team_id: "" });
   const [busy, setBusy] = useState(false);
+  const [itsmEnabled, setItsmEnabled] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -269,6 +333,7 @@ export default function AccessControl({ teams, onTeamsChanged }) {
     }
   }
   useEffect(() => {
+    api.getItsmConfig().then((c) => setItsmEnabled(!!c.itsm_enabled)).catch(() => {});
     load();
   }, []);
 
@@ -315,7 +380,7 @@ export default function AccessControl({ teams, onTeamsChanged }) {
     <div className="section-pad" style={{ maxWidth: 760 }}>
       <SsoConnection />
 
-      <TeamsManager teams={teams} onTeamsChanged={onTeamsChanged} />
+      <TeamsManager teams={teams} onTeamsChanged={onTeamsChanged} itsmEnabled={itsmEnabled} />
 
       <h2 style={{ fontSize: 16, margin: "4px 0 2px" }}>SSO access control</h2>
       <p className="muted" style={{ fontSize: 13, margin: "0 0 16px" }}>
