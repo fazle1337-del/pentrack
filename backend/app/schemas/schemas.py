@@ -31,12 +31,17 @@ class TeamCreate(BaseModel):
 
 class TeamUpdate(BaseModel):
     name: str
+    # EasyVista assignee-group id (2026-07-01). Omit to leave unchanged (so
+    # existing rename-only callers don't accidentally clear it); "" clears it
+    # explicitly. See routers/teams_users.py for the uniqueness check.
+    ev_group_id: str | None = None
 
 
 class TeamOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     name: str
+    ev_group_id: str | None = None
 
 
 # ---- Users ----
@@ -170,6 +175,11 @@ class FindingOut(BaseModel):
     additional_information: str | None
     resolver_reference: str | None
     date_logged_in_resolver: date | None
+    # EasyVista status cache — system-managed via POST /itsm/findings/{id}/refresh,
+    # not settable through FindingCreate/FindingUpdate.
+    itsm_status_label: str | None = None
+    itsm_closed: bool | None = None
+    itsm_synced_at: datetime | None = None
     sla_status: str
     created_at: datetime
     updated_at: datetime

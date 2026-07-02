@@ -77,6 +77,7 @@ export default function Findings({ teams, users, isAdmin, onNavigate, nav, onNav
   const [error, setError] = useState("");
   const [selected, setSelected] = useState(null);
   const [showImport, setShowImport] = useState(false);
+  const [itsmEnabled, setItsmEnabled] = useState(false);
 
   const [search, setSearch] = useState("");
   const [fRating, setFRating] = useState(new Set());
@@ -100,6 +101,7 @@ export default function Findings({ teams, users, isAdmin, onNavigate, nav, onNav
   }
   useEffect(() => {
     load();
+    api.getItsmConfig().then((c) => setItsmEnabled(!!c.itsm_enabled)).catch(() => {});
   }, []);
 
   // Consume a cross-tab navigation request: open the targeted finding's drawer.
@@ -375,6 +377,7 @@ export default function Findings({ teams, users, isAdmin, onNavigate, nav, onNav
             testName={testName[selected.test_id]}
             test={testById[selected.test_id]}
             isAdmin={isAdmin}
+            itsmEnabled={itsmEnabled}
             onNavigate={onNavigate}
             onClose={() => setSelected(null)}
             onSaved={(updated) => {
@@ -405,7 +408,7 @@ export default function Findings({ teams, users, isAdmin, onNavigate, nav, onNav
   );
 }
 
-function FindingDrawer({ finding, teams, users, testName, test, isAdmin, onNavigate, onClose, onSaved, onDeleted, onTestSaved }) {
+function FindingDrawer({ finding, teams, users, testName, test, isAdmin, itsmEnabled, onNavigate, onClose, onSaved, onDeleted, onTestSaved }) {
   const [form, setForm] = useState({ ...finding });
   const [testForm, setTestForm] = useState({
     penetration_tester: test?.penetration_tester || "",
@@ -413,6 +416,7 @@ function FindingDrawer({ finding, teams, users, testName, test, isAdmin, onNavig
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [itsmBusy, setItsmBusy] = useState(false);
   const [atts, setAtts] = useState([]);
   const ownerKey =
     finding.remediation_owner_user_id != null
@@ -448,7 +452,6 @@ function FindingDrawer({ finding, teams, users, testName, test, isAdmin, onNavig
       net_rating: form.net_rating,
       net_likelihood: form.net_likelihood,
       net_impact: form.net_impact,
-      asset_tested: form.asset_tested,
       test_vendor_initial_recommendation: form.test_vendor_initial_recommendation,
       additional_information: form.additional_information,
       date_logged_in_resolver: form.date_logged_in_resolver || null,
@@ -507,6 +510,36 @@ function FindingDrawer({ finding, teams, users, testName, test, isAdmin, onNavig
     } catch (e) {
       setErr(e.message);
       setBusy(false);
+    }
+  }
+
+  async function pushToItsm() {
+    setItsmBusy(true);
+    setErr("");
+    try {
+      const result = await api.pushFindingToItsm(finding.id);
+      const updated = { ...form, itsm_reference: result.itsm_reference };
+      setForm(updated);
+      onSaved(updated);
+    } catch (e) {
+      setErr(e.message); // e.g. the 409s: no owning team / team has no EV group mapped
+    } finally {
+      setItsmBusy(false);
+    }
+  }
+
+  async function refreshItsmStatus() {
+    setItsmBusy(true);
+    setErr("");
+    try {
+      const result = await api.refreshFindingItsmStatus(finding.id);
+      const updated = { ...form, ...result };
+      setForm(updated);
+      onSaved(updated);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setItsmBusy(false);
     }
   }
 
@@ -658,6 +691,42 @@ function FindingDrawer({ finding, teams, users, testName, test, isAdmin, onNavig
             <input className="in" value={form.resolver_reference || ""} onChange={(e) => set("resolver_reference", e.target.value)} />
           </div>
         </div>
+        {itsmEnabled && isAdmin && (
+          <div className="field">
+            <label>EasyVista</label>
+            {form.itsm_reference ? (
+              <>
+                <p style={{ margin: "0 0 6px", fontSize: 13 }}>
+                  {form.itsm_status_label ? (
+                    <>
+                      <span
+                        className="badge"
+                        style={form.itsm_closed ? undefined : { color: "var(--ok, #3a3)" }}
+                      >
+                        {form.itsm_closed ? "Closed" : "Open"}
+                      </span>{" "}
+                      {form.itsm_status_label}
+                    </>
+                  ) : (
+                    <span className="muted">Not synced yet</span>
+                  )}
+                  {form.itsm_synced_at && (
+                    <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>
+                      as of {new Date(form.itsm_synced_at).toLocaleString()}
+                    </span>
+                  )}
+                </p>
+                <button className="btn ghost" disabled={itsmBusy} onClick={refreshItsmStatus}>
+                  {itsmBusy ? "Refreshing…" : "Refresh status"}
+                </button>
+              </>
+            ) : (
+              <button className="btn ghost" disabled={itsmBusy} onClick={pushToItsm}>
+                {itsmBusy ? "Pushing…" : "Push to EasyVista"}
+              </button>
+            )}
+          </div>
+        )}
         <div className="field">
           <label>Date logged in resolver</label>
           <input

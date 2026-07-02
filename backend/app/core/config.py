@@ -76,14 +76,16 @@ class Settings(BaseSettings):
     easyvista_enabled: bool = False
     easyvista_host: str = ""            # e.g. https://<account>.easyvista.com
     easyvista_account: str = ""         # the path segment in /api/v1/<account>/requests
-    # REST auth. EasyVista's REST API uses HTTP Basic (login:password) for an
-    # integration account. NOTE: the linked "create request" doc only describes
-    # the 401 *failure*, not the mechanism — confirm Basic against a live tenant.
-    easyvista_login: str = ""
-    easyvista_password: str = ""
-    # File-based password (Docker-secret style); wins over the env var when the
+    # REST auth (2026-07-01 correction, confirmed by the EV technician): a
+    # bearer token tied to a managed EV identity — NOT HTTP Basic, which was
+    # this scaffold's original (wrong) assumption. The token is normally set
+    # via the admin UI (encrypted at rest — see app/core/easyvista_config.py),
+    # which wins over these env fields; they're the pre-admin-UI/bootstrap
+    # fallback, same relationship oidc_client_secret has to oidc_client_secret_file.
+    easyvista_bearer_token: str = ""
+    # File-based token (Docker-secret style); wins over the env var when the
     # file exists — same pattern as oidc_client_secret_file. Never commit secrets.
-    easyvista_password_file: str = ""
+    easyvista_bearer_token_file: str = ""
     # Tenant-specific "subject" that classifies the created request. The API
     # REQUIRES one of these (guid preferred); values come from the EV catalogue.
     easyvista_catalog_guid: str = ""
@@ -94,6 +96,20 @@ class Settings(BaseSettings):
     # HTTP client timeout (EV's own server-side timeout defaults to 60s).
     easyvista_timeout_seconds: int = 30
 
+    # Background status poller (locked decision: two poll intervals + on-demand
+    # refresh, all admin-tab adjustable — DB-over-env resolution lives in
+    # app/core/easyvista_config.py, same pattern as the bearer token but these
+    # aren't secret so they're stored plain). OFF by default — even with
+    # easyvista_enabled, an admin must separately opt into automatic polling,
+    # matching this whole integration's "ships dark" default. Defaults mirror
+    # the EV technician's suggestion: poll open tickets ~daily, closed tickets
+    # weekly, and stop re-polling a ticket that's been closed for a year+.
+    easyvista_poll_enabled: bool = False
+    easyvista_poll_tick_seconds: int = 300  # how often the loop wakes to check what's due
+    easyvista_poll_open_interval_seconds: int = 86400
+    easyvista_poll_closed_interval_seconds: int = 604800
+    easyvista_poll_closed_lookback_days: int = 365
+
 
 @lru_cache
 def get_settings() -> Settings:
@@ -103,8 +119,8 @@ def get_settings() -> Settings:
         path = Path(settings.oidc_client_secret_file)
         if path.is_file():
             settings.oidc_client_secret = path.read_text().strip()
-    if settings.easyvista_password_file:
-        path = Path(settings.easyvista_password_file)
+    if settings.easyvista_bearer_token_file:
+        path = Path(settings.easyvista_bearer_token_file)
         if path.is_file():
-            settings.easyvista_password = path.read_text().strip()
+            settings.easyvista_bearer_token = path.read_text().strip()
     return settings
